@@ -1,0 +1,161 @@
+#include <mutex>
+#include <chrono>
+#include "tasksys/Worker.h"
+#include "tasksys/memory.h"
+#include "tasksys/cpu.h"
+
+using namespace std::chrono_literals;
+
+static std::atomic_int g_cpu_offset = 0;
+
+void ts::Worker::run() {
+  while (!_group._begin && !_token.stop_requested()) {
+    std::this_thread::yield();
+  }
+
+  while (!_token.stop_requested()) {
+    Job job;
+
+    // local-queue
+    if (_queue.pop(&job)) {
+      job();
+      continue;
+    }
+
+    // global-queue
+    if (_group._queue.pop(&job)) {
+      job();
+      continue;
+    }
+
+    // other-queue
+    if (steal(&job)) {
+      job();
+      continue;
+    }
+
+    std::this_thread::yield();
+  }
+
+  _group.notify_closed();
+}
+
+bool ts::Worker::steal(ts::Job *job) noexcept {
+  for (size_t i = 1; i < _group._size; ++i) {
+    auto &worker = _group._workers[(_index + i) % _group._size];
+    if (worker._queue.steal(job)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+ts::Worker::Worker(
+    WorkerGroup &group,
+    size_t index,
+    std::stop_source &sts,
+    size_t size)
+    : _group(group),
+      _index(index),
+      _queue(size),
+      _token(sts.get_token()),
+      _thread(&Worker::run, this) {
+}
+
+bool ts::Worker::push(const ts::Job &job) noexcept {
+  return _queue.push(job);
+}
+
+bool ts::Worker::pin(int cpu) noexcept {
+  return ts::pin(_thread, cpu);
+}
+
+void ts::Worker::join() noexcept {
+  if (_thread.joinable()) {
+    _thread.join();
+  }
+}
+
+void ts::WorkerGroup::notify_closed() noexcept {
+  if (--_available == 0) {
+    std::scoped_lock lock(_mutex);
+    _cv.notify_all();
+  }
+}
+
+bool ts::WorkerGroup::is_bound(int cpu) const noexcept {
+  // todo : optimize for big-little
+  cpu -= _cpu_offset;
+  return 0 <= cpu && cpu < _size;
+}
+
+int ts::WorkerGroup::map_index(int cpu) const noexcept {
+  // todo : optimize for big-little
+  return cpu - _cpu_offset;
+}
+
+void ts::WorkerGroup::dispose() noexcept {
+  stop();
+  join(1000ms);
+
+  for (size_t i = 0; i < _size; ++i) {
+    _workers[i].join();
+    _workers[i].~Worker();
+  }
+
+  ts::free(_workers);
+}
+
+ts::WorkerGroup::WorkerGroup(int size, size_t capacity)
+    : _size(size),
+      _begin(false),
+      _available(size) {
+
+  _cpu_offset = g_cpu_offset.fetch_add(size);
+  if (_cpu_offset + size > ts::cpu_number()) {
+    throw ts::InsufficientThreadException(_cpu_offset + size);
+  }
+
+  bool pinned = true;
+
+  _workers = ts::alloc<Worker>(size);
+  for (auto i = 0; i < size; ++i) {
+    auto *p = new(&_workers[i]) Worker(*this, i, _sts, capacity);
+    pinned &= p->pin(_cpu_offset + i);
+  }
+
+  if (!pinned) {
+    dispose();
+    throw ts::InvalidStateException("failed to pin logical thread to physical thread");
+  }
+
+  _begin = true;
+}
+
+ts::WorkerGroup::~WorkerGroup() {
+  dispose();
+}
+
+void ts::WorkerGroup::push(const ts::Job &job) noexcept {
+  auto id = ts::cpu_id();
+  if (is_bound(id)) {
+    _workers[map_index(id)].push(job);
+    return;
+  }
+
+  _queue.push(job);
+}
+
+bool ts::WorkerGroup::join(std::chrono::milliseconds timeout) noexcept {
+  std::unique_lock lock(_mutex);
+  if (_cv.wait_for(lock, timeout, [this]() { return _available == 0; })) {
+    return true;
+  }
+
+  return false;
+}
+
+void ts::WorkerGroup::stop() noexcept {
+  _sts.request_stop();
+}
