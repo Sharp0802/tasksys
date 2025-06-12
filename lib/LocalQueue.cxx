@@ -8,17 +8,17 @@ ts::LocalQueue::LocalQueue(size_t size) : _mask(size - 1), _head(0), _tail(0) {
 }
 
 bool ts::LocalQueue::pop(Job *job) noexcept {
-  size_t tail = _tail.load(std::memory_order_relaxed) - 1;
-  _tail.store(tail, std::memory_order_relaxed);
-
+  size_t tail = _tail.load(std::memory_order_relaxed);
   size_t head = _head.load(std::memory_order_acquire);
-  if (head <= tail) {
-    *job = _array[tail & _mask];
-    return true;
+  if (head >= tail) {
+    return false;
   }
 
-  _tail.store(tail + 1, std::memory_order_relaxed);
-  return false;
+  tail = tail - 1;
+  _tail.store(tail, std::memory_order_relaxed);
+
+  *job = _array[tail & _mask];
+  return true;
 }
 
 bool ts::LocalQueue::steal(Job *job) noexcept {
