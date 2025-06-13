@@ -144,7 +144,9 @@ void ts::WorkerGroup::push(const ts::Job &job) noexcept {
     return;
   }
 
-  _queue.push(job);
+  while (!_queue.push(job)) {
+    std::this_thread::yield();
+  }
 }
 
 bool ts::WorkerGroup::join(std::chrono::milliseconds timeout) noexcept {
