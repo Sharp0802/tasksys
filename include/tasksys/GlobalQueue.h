@@ -3,29 +3,27 @@
 #include "LocalQueue.h"
 
 namespace ts {
-  struct HazardDtor;
-
   /*
-   * Michael-Scott queue implementation
+   * FFA-queue
    */
   class GlobalQueue {
-    friend struct ts::HazardDtor;
+    struct alignas(64) Slot {
+      static_assert(sizeof(Job) < 64);
 
-    struct Node {
-      std::atomic<Node *> next;
-      Job value;
-
-      explicit Node(const Job &val) : next(nullptr), value(val) {}
+      Job data;
+      char __pad[64 - sizeof(data)];
     };
 
-    alignas(64) std::atomic<Node *> head;
-    alignas(64) std::atomic<Node *> tail;
+    size_t _mask;
+
+    alignas(64) std::unique_ptr<Slot[]> _array;
+    alignas(64) std::atomic_size_t _head;
+    alignas(64) std::atomic_size_t _tail;
 
   public:
-    GlobalQueue();
-    ~GlobalQueue();
+    explicit GlobalQueue(size_t size);
 
-    void push(const Job &value);
-    bool pop(Job *result);
+    bool push(const Job &job);
+    bool pop(Job *job);
   };
 }
