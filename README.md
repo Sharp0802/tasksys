@@ -2,6 +2,11 @@
 
 Welcome to `tasksys`, Coroutine-based Task System for modern C++ (C++26)
 
+## Dependency
+
+- [oneTBB](https://github.com/uxlfoundation/oneTBB) by UXL foundation - only for test bed
+- No dependency other than STL
+
 ## Progress
 
 - [x] Implement basic Job-system
@@ -33,5 +38,5 @@ w.push({fp, data}); // schedule job
 
 `ts::Worker` represents single-threaded worker.
 
-- `ts::LocalQueue` (`<tasksys/LocalQueue.h>`) : Chase-lev work-stealing queue
-- `ts::GlobalQueue` (`<tasksys/GlobalQueue.h>`) : Fetch-and-Add MPMC queue
+- `ts::LocalQueue` (`<tasksys/LocalQueue.h>`) : Chase-lev work-stealing queue (fixed-size)
+- `ts::GlobalQueue` (`<tasksys/GlobalQueue.h>`) : Fetch-and-Add MPMC queue (fixed-size)
