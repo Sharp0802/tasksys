@@ -1,67 +1,181 @@
 #include "tasksys/Worker.h"
-#include <iostream>
+#include "benchmark.h"
+#include <oneapi/tbb/task_group.h>
+#include <future>
+#include <random>
 
-#define BENCHMARK_SAMPLE 10000
-#define WARMUP_SAMPLE 100
+thread_local std::mt19937 tl_gen(std::random_device{}());
+thread_local std::uniform_int_distribution<> tl_distrib(0, 10);
 
-void task(void *data) {
-  volatile bool *p = static_cast<bool *>(data);
-  *p = true;
+void add_delay() {
+  std::this_thread::sleep_for(std::chrono::microseconds(tl_distrib(tl_gen)));
 }
 
-[[clang::optnone]]
-void LocalQueue__push_pop(void *p) {
-  auto *buffer = static_cast<ts::LocalQueue *>(p);
+BENCHMARK(LocalQueue__latency, ts::LocalQueue) {
+  ts::Job job = s_test_jobs[i];
 
-  ts::Job job{ task, nullptr };
-
-  assert(buffer->push(job));
-  assert(buffer->pop(&job));
+  p->push(job);
+  p->pop(&job);
 }
 
-[[clang::optnone]]
-void GlobalQueue__push_pop(void *p) {
-  auto *buffer = static_cast<ts::GlobalQueue *>(p);
+BENCHMARK(GlobalQueue__latency, ts::GlobalQueue) {
+  ts::Job job = s_test_jobs[i];
 
-  ts::Job job{ task, nullptr };
-
-  buffer->push(job);
-  assert(buffer->pop(&job));
+  p->push(job);
+  p->pop(&job);
 }
 
-[[clang::optnone]]
-void WorkerGroup__push(void *p) {
-  auto *pool = static_cast<ts::WorkerGroup *>(p);
+BENCHMARK(WorkerGroup__latency, ts::WorkerGroup) {
+  std::atomic_bool b{false};
+  ts::Job job{
+      [](void *p) {
+        static_cast<std::atomic_bool *>(p)->store(true);
+      },
+      &b
+  };
+  p->push(job);
 
-  auto b = false;
-  ts::Job job{ task, &b };
-  pool->push(job);
-  while (!b) {}
+  while (!b) { }
 }
 
-[[clang::optnone]]
-void benchmark(const char *name, void (*fn)(void *), void *p, int sample = BENCHMARK_SAMPLE) {
-  auto begin = std::chrono::high_resolution_clock::now();
-  for (auto i = 0; i < sample; ++i) {
-    fn(p);
+BENCHMARK(TaskGroup__latency, tbb::task_group) {
+  p->run([] {});
+  p->wait();
+}
+
+template<size_t N>
+void LocalQueue__integrity() {
+  static constexpr std::string NAME = "LocalQueue";
+
+  tbb::task_group tg;
+  bool failed = false;
+
+  ts::LocalQueue local{ N };
+
+  std::array<ts::Job, N> jobs{};
+
+  // steal before push : to make chaos
+  for (auto i = 0; i < N; ++i) {
+    tg.run([&, i] {
+      add_delay();
+
+      ts::Job job;
+      while (!local.steal(&job)) {
+        std::this_thread::yield();
+      }
+      jobs[i] = job;
+    });
   }
-  std::chrono::nanoseconds elapsed = std::chrono::high_resolution_clock::now() - begin;
-  if (name != nullptr) {
-    std::cout << name << "\t: " << (elapsed.count() / sample) << "ns\n";
+
+  for (auto i = 0; i < N; ++i) {
+    if (!local.push(s_test_jobs[i])) {
+      std::println(std::cerr, "{:>24} : [{}] push failed", NAME, i);
+      failed = true;
+    }
+  }
+  if (failed) {
+    std::println(std::cerr, "{:>24} : failed", NAME);
+    return;
+  }
+
+  tg.wait();
+
+  for (auto i = 0; i < N; ++i) {
+    bool found = false;
+    for (auto j = 0; j < N; ++j) {
+      if (s_test_jobs[i] == jobs[j]) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      std::println(std::cerr, "{:>24} : [{}] item missing", NAME, i);
+      failed = true;
+    }
+  }
+  if (failed) {
+    std::println(std::cerr, "{:>24} : failed", NAME);
+  } else {
+    std::println("{:>24} : pass", NAME);
+  }
+}
+
+template<size_t N>
+void GlobalQueue__integrity() {
+  static constexpr std::string NAME = "GlobalQueue";
+
+  tbb::task_group tg;
+
+  ts::GlobalQueue local{ N };
+
+  std::array<ts::Job, N> jobs{};
+  for (auto i = 0; i < N; ++i) {
+    tg.run([&, i] {
+      add_delay();
+
+      while (!local.push(s_test_jobs[i])) {
+        std::this_thread::yield();
+      }
+    });
+  }
+  // tg.wait() <- queue should align itself without external help
+
+  for (auto i = 0; i < N; ++i) {
+    tg.run([&, i] {
+      add_delay();
+
+      ts::Job job;
+      while (!local.pop(&job)) {
+        std::this_thread::yield();
+      }
+      jobs[i] = job;
+    });
+  }
+  tg.wait();
+
+  bool failed = false;
+  for (auto i = 0; i < N; ++i) {
+    bool found = false;
+    for (auto j = 0; j < N; ++j) {
+      if (s_test_jobs[i] == jobs[j]) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      std::println(std::cerr, "{:>24} : [{}] item missing", NAME, i);
+      failed = true;
+    }
+  }
+  if (failed) {
+    std::println(std::cerr, "{:>24} : failed", NAME);
+  } else {
+    std::println("{:>24} : pass", NAME);
   }
 }
 
 int main() {
-  ts::LocalQueue local{64 };
-  benchmark(nullptr, LocalQueue__push_pop, &local, WARMUP_SAMPLE);
-  benchmark("local-queue", LocalQueue__push_pop, &local);
+  initialize(s_test_jobs);
 
-  ts::GlobalQueue global;
-  benchmark(nullptr, GlobalQueue__push_pop, &global, WARMUP_SAMPLE);
-  benchmark("global-queue", GlobalQueue__push_pop, &global);
+  std::println("= BENCHMARK");
 
-  ts::WorkerGroup pool{ 4, 64 };
-  benchmark(nullptr, WorkerGroup__push, &pool, WARMUP_SAMPLE);
-  benchmark("thread-pool", WorkerGroup__push, &pool);
-  pool.stop();
+  ts::LocalQueue local{64};
+  BENCHMARK_RUN(LocalQueue__latency, local);
+
+  ts::GlobalQueue global{64};
+  BENCHMARK_RUN(GlobalQueue__latency, global);
+
+  ts::WorkerGroup wg{4, 64, 64};
+  BENCHMARK_RUN(WorkerGroup__latency, wg);
+  wg.stop();
+
+  tbb::task_group tg;
+  BENCHMARK_RUN(TaskGroup__latency, tg);
+
+  std::println("= TEST");
+  std::flush(std::cout);
+  std::flush(std::cerr);
+
+  LocalQueue__integrity<TEST_SAMPLE>();
+  GlobalQueue__integrity<TEST_SAMPLE>();
 }
