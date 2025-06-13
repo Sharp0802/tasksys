@@ -20,6 +20,14 @@ namespace ts {
         _fn(_data);
       }
     }
+
+    bool operator==(const Job& other) const {
+      return other._fn == _fn && other._data == _data;
+    }
+
+    bool operator !=(const Job& other) const {
+      return other._fn != _fn || other._data != _data;
+    }
   };
 
   /*
