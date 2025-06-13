@@ -44,7 +44,7 @@ BENCHMARK(TaskGroup__latency, tbb::task_group) {
 }
 
 template<size_t N>
-void LocalQueue__integrity() {
+bool LocalQueue__integrity() {
   static constexpr std::string NAME = "LocalQueue";
 
   tbb::task_group tg;
@@ -75,7 +75,7 @@ void LocalQueue__integrity() {
   }
   if (failed) {
     std::println(std::cerr, "{:>24} : failed", NAME);
-    return;
+    return false;
   }
 
   tg.wait();
@@ -98,10 +98,12 @@ void LocalQueue__integrity() {
   } else {
     std::println("{:>24} : pass", NAME);
   }
+
+  return !failed;
 }
 
 template<size_t N>
-void GlobalQueue__integrity() {
+bool GlobalQueue__integrity() {
   static constexpr std::string NAME = "GlobalQueue";
 
   tbb::task_group tg;
@@ -152,6 +154,8 @@ void GlobalQueue__integrity() {
   } else {
     std::println("{:>24} : pass", NAME);
   }
+
+  return !failed;
 }
 
 int main() {
@@ -176,6 +180,11 @@ int main() {
   std::flush(std::cout);
   std::flush(std::cerr);
 
-  LocalQueue__integrity<TEST_SAMPLE>();
-  GlobalQueue__integrity<TEST_SAMPLE>();
+  auto li = LocalQueue__integrity<TEST_SAMPLE>();
+  auto gi = GlobalQueue__integrity<TEST_SAMPLE>();
+  if (!li || !gi) {
+    return -1;
+  }
+
+  return 0;
 }
