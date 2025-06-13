@@ -1,5 +1,6 @@
 #include <random>
 #include "tasksys/LocalQueue.h"
+#include "tasksys/memory.h"
 
 ts::LocalQueue::LocalQueue(size_t size) : _mask(size - 1), _head(0), _tail(0) {
   assert(std::popcount(size) == 1);
@@ -8,6 +9,8 @@ ts::LocalQueue::LocalQueue(size_t size) : _mask(size - 1), _head(0), _tail(0) {
 }
 
 bool ts::LocalQueue::pop(Job *job) noexcept {
+  assert(_array);
+
   size_t tail = _tail.load(std::memory_order_relaxed);
   size_t head = _head.load(std::memory_order_acquire);
   if (head >= tail) {
@@ -22,6 +25,8 @@ bool ts::LocalQueue::pop(Job *job) noexcept {
 }
 
 bool ts::LocalQueue::steal(Job *job) noexcept {
+  assert(_array);
+
   size_t head = _head.load(std::memory_order_acquire);
   size_t tail = _tail.load(std::memory_order_acquire);
   if (head >= tail) {
@@ -41,6 +46,8 @@ bool ts::LocalQueue::steal(Job *job) noexcept {
 }
 
 bool ts::LocalQueue::push(const Job &job) noexcept {
+  assert(_array);
+
   size_t tail = _tail.load(std::memory_order_relaxed);
   size_t head = _head.load(std::memory_order_acquire);
   if ((tail - head) > _mask) {

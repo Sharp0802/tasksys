@@ -7,7 +7,7 @@
 #include <thread>
 
 namespace ts {
-  struct Job {
+  class Job {
     void (*_fn)(void *);
     void *_data;
 
@@ -33,6 +33,9 @@ namespace ts {
     alignas(64) std::atomic_size_t _tail;
 
   public:
+    LocalQueue(const LocalQueue &) = delete;
+    LocalQueue &operator=(const LocalQueue &) = delete;
+
     explicit LocalQueue(size_t size);
 
     bool pop(Job *job) noexcept;
