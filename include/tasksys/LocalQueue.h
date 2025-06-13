@@ -28,7 +28,7 @@ namespace ts {
   class LocalQueue {
     size_t _mask;
 
-    alignas(64) std::unique_ptr<Job[]> _array;
+    alignas(64) Job *_array;
     alignas(64) std::atomic_size_t _head;
     alignas(64) std::atomic_size_t _tail;
 
@@ -37,6 +37,7 @@ namespace ts {
     LocalQueue &operator=(const LocalQueue &) = delete;
 
     explicit LocalQueue(size_t size);
+    ~LocalQueue();
 
     bool pop(Job *job) noexcept;
     bool steal(Job *job) noexcept;

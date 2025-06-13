@@ -5,7 +5,11 @@
 ts::LocalQueue::LocalQueue(size_t size) : _mask(size - 1), _head(0), _tail(0) {
   assert(std::popcount(size) == 1);
 
-  _array = std::make_unique<Job[]>(size);
+  _array = ts::alloc<Job>(size);
+}
+
+ts::LocalQueue::~LocalQueue() {
+  ts::free(_array);
 }
 
 bool ts::LocalQueue::pop(Job *job) noexcept {
