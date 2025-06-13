@@ -4,6 +4,7 @@
 #include <utility>
 
 namespace ts {
+  bool pin(int cpu);
   bool pin(std::jthread &thread, int cpu);
   int cpu_number() noexcept;
   int cpu_id() noexcept;

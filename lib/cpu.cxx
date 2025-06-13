@@ -12,19 +12,18 @@
 #include <thread>
 
 namespace {
-  bool pin_thread(std::jthread &thr, uint32_t cpu_id) {
+  bool pin_thread(std::thread::native_handle_type thr, uint32_t cpu_id) {
 #ifdef _WIN32
-    HANDLE handle = static_cast<HANDLE>(thr.native_handle());
+    HANDLE handle = static_cast<HANDLE>(thr);
     DWORD_PTR mask = static_cast<DWORD_PTR>(1) << cpu_id;
     DWORD_PTR result = SetThreadAffinityMask(handle, mask);
     return (result != 0);
 #else
-    auto handle = thr.native_handle();
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     CPU_SET(cpu_id, &cpuset);
-    int err = pthread_setaffinity_np(handle, sizeof(cpu_set_t), &cpuset);
+    int err = pthread_setaffinity_np(thr, sizeof(cpu_set_t), &cpuset);
     return (err == 0);
 #endif
   }
@@ -59,7 +58,17 @@ static int s_n = -1;
 thread_local static int tl_id = -1;
 
 bool ts::pin(std::jthread &thread, int cpu) {
-  return pin_thread(thread, cpu);
+  return pin_thread(thread.native_handle(), cpu);
+}
+
+bool ts::pin(int cpu) {
+#ifdef _WIN32
+  auto thr = (std::thread::native_handle_type)GetCurrentThreadId();
+#elif defined(__linux__)
+  auto thr = (std::thread::native_handle_type)pthread_self();
+#endif
+
+  return pin_thread(thr, cpu);
 }
 
 int ts::cpu_number() noexcept {
