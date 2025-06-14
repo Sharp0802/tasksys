@@ -176,13 +176,16 @@ int main() {
   ts::GlobalQueue global{64};
   BENCHMARK_RUN(GlobalQueue__latency, global);
 
-  ts::WorkerGroup wg{4, 2048, 64};
+  ts::WorkerGroup wg{2, 2048, 64};
   wg.start();
   BENCHMARK_RUN(WorkerGroup__latency, wg);
   wg.stop();
 
-  tbb::task_group tg;
-  BENCHMARK_RUN(TaskGroup__latency, tg);
+  {
+    tbb::global_control limit(tbb::global_control::max_allowed_parallelism, 2);
+    tbb::task_group tg;
+    BENCHMARK_RUN(TaskGroup__latency, tg);
+  }
 
 #if _DEBUG
   std::println("= TEST");
