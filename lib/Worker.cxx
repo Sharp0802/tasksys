@@ -11,6 +11,9 @@ static std::atomic_int g_cpu_offset = 1; // 0 is for main thread
 void ts::Worker::run() {
   while (!_group._begin && !_token.stop_requested()) {
     std::this_thread::yield();
+  {
+    std::unique_lock lock(_mutex);
+    _cv.wait(lock);
   }
 
   while (!_token.stop_requested()) {
@@ -82,6 +85,10 @@ void ts::Worker::join() noexcept {
   }
 }
 
+void ts::Worker::start() noexcept {
+  _cv.notify_all();
+}
+
 void ts::WorkerGroup::notify_closed() noexcept {
   if (--_available == 0) {
     std::scoped_lock lock(_mutex);
@@ -103,6 +110,8 @@ int ts::WorkerGroup::map_index(int cpu) const noexcept {
 #endif
 
 void ts::WorkerGroup::dispose() noexcept {
+  _cv.notify_all();
+
   stop();
   join(1000ms);
 
@@ -116,7 +125,6 @@ void ts::WorkerGroup::dispose() noexcept {
 
 ts::WorkerGroup::WorkerGroup(int size, size_t capacity, size_t local_capacity)
     : _size(size),
-      _begin(false),
       _available(size),
       _queue(capacity) {
 
@@ -148,12 +156,16 @@ ts::WorkerGroup::WorkerGroup(int size, size_t capacity, size_t local_capacity)
     throw ts::InvalidStateException("failed to pin logical thread to physical thread");
   }
 #endif
-
-  _begin = true;
 }
 
 ts::WorkerGroup::~WorkerGroup() {
   dispose();
+}
+
+void ts::WorkerGroup::start() noexcept {
+  for (auto i = 0; i < _size; ++i) {
+    _workers[i].start();
+  }
 }
 
 void ts::WorkerGroup::push(const ts::Job &job) noexcept {

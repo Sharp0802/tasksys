@@ -21,6 +21,8 @@ namespace ts {
 
     std::stop_token _token;
     std::jthread _thread;
+    std::mutex _mutex;
+    std::condition_variable _cv;
 
     void run();
     bool steal(Job *job) noexcept;
@@ -28,6 +30,7 @@ namespace ts {
   public:
     Worker(WorkerGroup &group, size_t index, std::stop_source &sts, size_t size);
 
+    void start() noexcept;
     bool push(const Job &job) noexcept;
 
 #if PIN_WORKER
@@ -47,7 +50,6 @@ namespace ts {
     std::unordered_map<std::thread::id, Worker *> _worker_map;
 #endif
 
-    std::atomic_bool _begin;
     std::stop_source _sts;
     std::atomic_size_t _available;
     std::condition_variable _cv;
@@ -68,6 +70,7 @@ namespace ts {
     WorkerGroup(int size, size_t capacity, size_t local_capacity);
     ~WorkerGroup();
 
+    void start() noexcept;
     void push(const Job &job) noexcept;
 
     bool join(std::chrono::milliseconds timeout) noexcept;
