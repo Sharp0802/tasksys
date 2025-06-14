@@ -1,11 +1,16 @@
 #include "tasksys/GlobalQueue.h"
+#include "tasksys/memory.h"
 #include <vector>
 #include <execution>
 
 ts::GlobalQueue::GlobalQueue(size_t size) : _mask(size - 1) {
   assert(std::popcount(size) == 1);
 
-  _array = std::make_unique<Slot[]>(size);
+  _array = ts::alloc<Slot>(size);
+}
+
+ts::GlobalQueue::~GlobalQueue() {
+  ts::free(_array);
 }
 
 bool ts::GlobalQueue::push(const ts::Job &job) {

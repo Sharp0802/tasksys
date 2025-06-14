@@ -16,12 +16,16 @@ namespace ts {
 
     size_t _mask;
 
-    alignas(64) std::unique_ptr<Slot[]> _array;
+    alignas(64) Slot *_array;
     alignas(64) std::atomic_size_t _head;
     alignas(64) std::atomic_size_t _tail;
 
   public:
+    GlobalQueue(const GlobalQueue &) = delete;
+    GlobalQueue &operator=(const GlobalQueue &) = delete;
+
     explicit GlobalQueue(size_t size);
+    ~GlobalQueue();
 
     bool push(const Job &job);
     bool pop(Job *job);
