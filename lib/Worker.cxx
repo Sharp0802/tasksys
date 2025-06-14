@@ -1,5 +1,6 @@
 #include <mutex>
 #include <chrono>
+#include <execution>
 #include "tasksys/Worker.h"
 #include "tasksys/memory.h"
 #include "tasksys/cpu.h"
@@ -19,22 +20,22 @@ void ts::Worker::run() {
   }
 
   while (!_token.stop_requested()) {
-    Job job;
+    Job job{};
 
-    // local-queue
-    if (_queue.pop(&job)) {
-      job();
-      continue;
+    for (auto i = 0; i < 1000; ++i) {
+      if (_queue.pop(&job)) {
+        break;
+      }
+      if (_group._queue.pop(&job)) {
+        break;
+      }
+      if ((i & 0xF) == 0 && steal(&job)) {
+        break;
+      }
+
+      _mm_pause();
     }
-
-    // global-queue
-    if (_group._queue.pop(&job)) {
-      job();
-      continue;
-    }
-
-    // other-queue
-    if (steal(&job)) {
+    if (job) {
       job();
       continue;
     }

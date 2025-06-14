@@ -17,7 +17,7 @@ namespace ts {
     WorkerGroup &_group;
     size_t _index;
 
-    LocalQueue _queue;
+    alignas(64) LocalQueue _queue;
 
     std::stop_token _token;
     std::jthread _thread;
