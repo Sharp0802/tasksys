@@ -63,6 +63,6 @@ bool ts::LocalQueue::push(const Job &job) noexcept {
   }
 
   _array[tail & _mask] = job;
-  _tail.store(tail + 1, std::memory_order_relaxed);
+  _tail.store(tail + 1, std::memory_order_release);
   return true;
 }
