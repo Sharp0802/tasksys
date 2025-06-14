@@ -26,16 +26,24 @@ BENCHMARK(GlobalQueue__latency, ts::GlobalQueue) {
 }
 
 BENCHMARK(WorkerGroup__latency, ts::WorkerGroup) {
-  std::atomic_bool b{false};
-  ts::Job job{
-      [](void *p) {
-        static_cast<std::atomic_bool *>(p)->store(true);
+  struct T {
+    std::atomic_bool b;
+    int i;
+  } res = {false, i};
+
+  std::println(">{}", res.i);
+  ts::Job job = ts::Job(
+      [](T *r) {
+        std::println("${}", r->i);
+        r->b.store(true);
       },
-      &b
-  };
+      &res
+  );
   p->push(job);
 
-  while (!b) { }
+  while (!res.b.load(std::memory_order_acquire)) {
+    _mm_pause();
+  }
 }
 
 BENCHMARK(TaskGroup__latency, tbb::task_group) {
@@ -50,7 +58,7 @@ bool LocalQueue__integrity() {
   tbb::task_group tg;
   bool failed = false;
 
-  ts::LocalQueue local{ N };
+  ts::LocalQueue local{N};
 
   std::array<ts::Job, N> jobs{};
 
@@ -108,7 +116,7 @@ bool GlobalQueue__integrity() {
 
   tbb::task_group tg;
 
-  ts::GlobalQueue local{ N };
+  ts::GlobalQueue local{N};
 
   std::array<ts::Job, N> jobs{};
   for (auto i = 0; i < N; ++i) {
@@ -169,7 +177,8 @@ int main() {
   ts::GlobalQueue global{64};
   BENCHMARK_RUN(GlobalQueue__latency, global);
 
-  ts::WorkerGroup wg{4, 64, 64};
+  ts::WorkerGroup wg{4, 2048, 64};
+  wg.start();
   BENCHMARK_RUN(WorkerGroup__latency, wg);
   wg.stop();
 
