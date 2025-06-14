@@ -28,6 +28,8 @@ namespace ts {
     bool steal(Job *job) noexcept;
 
   public:
+    static thread_local Worker* tl_this_worker;
+
     Worker(WorkerGroup &group, size_t index, std::stop_source &sts, size_t size);
 
     void start() noexcept;

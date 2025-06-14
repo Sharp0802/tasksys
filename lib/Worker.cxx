@@ -8,9 +8,11 @@ using namespace std::chrono_literals;
 
 static std::atomic_int g_cpu_offset = 1; // 0 is for main thread
 
+thread_local ts::Worker *ts::Worker::tl_this_worker = nullptr;
+
 void ts::Worker::run() {
-  while (!_group._begin && !_token.stop_requested()) {
-    std::this_thread::yield();
+  tl_this_worker = this;
+
   {
     std::unique_lock lock(_mutex);
     _cv.wait(lock);
@@ -169,6 +171,11 @@ void ts::WorkerGroup::start() noexcept {
 }
 
 void ts::WorkerGroup::push(const ts::Job &job) noexcept {
+  if (Worker::tl_this_worker) {
+    Worker::tl_this_worker->push(job);
+    return;
+  }
+
 #ifdef PIN_WORKER
   auto id = ts::cpu_id();
   if (is_bound(id)) {
