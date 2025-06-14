@@ -2,6 +2,10 @@
 #include "tasksys/LocalQueue.h"
 #include "tasksys/memory.h"
 
+#if _DEBUG
+std::atomic_uint64_t ts::Job::tl_id{1};
+#endif
+
 ts::LocalQueue::LocalQueue(size_t size) : _mask(size - 1), _head(0), _tail(0) {
   assert(std::popcount(size) == 1);
 

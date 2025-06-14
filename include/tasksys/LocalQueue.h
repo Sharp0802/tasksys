@@ -1,39 +1,67 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <cassert>
 #include <utility>
 #include <thread>
 
 namespace ts {
-  class Job {
-    void (*_fn)(void *);
-    void *_data;
+  class alignas(64) Job {
+#if _DEBUG
+    static std::atomic_uint64_t tl_id;
+    uint64_t _id;
+#endif
+
+    std::function<void()> _fn;
 
   public:
-    Job() : _fn(nullptr), _data(nullptr) {}
+    Job() = default;
+    
+    Job(const Job &other)
+        : _fn(other._fn)
+#if _DEBUG
+          , _id(other._id)
+#endif
+          {}
 
-    template<typename Fn, typename T>
-    Job(Fn&& fn, T *data) : _fn(reinterpret_cast<void (*)(void *)>(static_cast<void(*)(T*)>(fn))), _data(data) {}
+    template<typename Fn>
+    requires (!std::is_same_v<std::decay_t<Fn>, Job>)
+    Job(Fn &&fn)
+        : _fn(fn)
+#if _DEBUG
+          , _id(tl_id.fetch_add(1))
+#endif
+          {}
+
+    Job &operator=(const Job &other) {
+#if _DEBUG
+      _id = other._id;
+#endif
+      _fn = other._fn;
+      return *this;
+    }
 
     operator bool() const {
-      return _fn;
+      return _fn.operator bool();
     }
 
     void operator()() const {
       if (_fn) {
-        _fn(_data);
+        _fn();
       }
     }
 
+#if _DEBUG
     bool operator==(const Job &other) const {
-      return other._fn == _fn && other._data == _data;
+      return _id == other._id;
     }
 
     bool operator!=(const Job &other) const {
-      return other._fn != _fn || other._data != _data;
+      return _id != other._id;
     }
+#endif
   };
 
   /*
