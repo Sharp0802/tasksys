@@ -13,7 +13,13 @@ namespace ts {
 
   public:
     Job() : _fn(nullptr), _data(nullptr) {}
-    Job(void (*fn)(void *), void *data) : _fn(fn), _data(data) {}
+
+    template<typename Fn, typename T>
+    Job(Fn&& fn, T *data) : _fn(reinterpret_cast<void (*)(void *)>(static_cast<void(*)(T*)>(fn))), _data(data) {}
+
+    operator bool() const {
+      return _fn;
+    }
 
     void operator()() const {
       if (_fn) {
@@ -21,11 +27,11 @@ namespace ts {
       }
     }
 
-    bool operator==(const Job& other) const {
+    bool operator==(const Job &other) const {
       return other._fn == _fn && other._data == _data;
     }
 
-    bool operator !=(const Job& other) const {
+    bool operator!=(const Job &other) const {
       return other._fn != _fn || other._data != _data;
     }
   };
