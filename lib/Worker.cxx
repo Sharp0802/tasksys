@@ -14,10 +14,7 @@ thread_local ts::Worker *ts::Worker::tl_this_worker = nullptr;
 void ts::Worker::run() {
   tl_this_worker = this;
 
-  {
-    std::unique_lock lock(_mutex);
-    _cv.wait(lock);
-  }
+  _group.wait_for_start();
 
   while (!_token.stop_requested()) {
     Job job{};
@@ -65,11 +62,7 @@ ts::Worker::Worker(
     : _group(group),
       _index(index),
       _queue(size),
-      _token(sts.get_token()),
-      _thread(&Worker::run, this) {
-#ifndef PIN_WORKER
-  group._worker_map[_thread.get_id()] = this;
-#endif
+      _token(sts.get_token()) {
 }
 
 bool ts::Worker::push(const ts::Job &job) noexcept {
@@ -82,14 +75,17 @@ bool ts::Worker::pin(int cpu) noexcept {
 }
 #endif
 
+void ts::Worker::start() noexcept {
+  _thread = std::jthread{ &Worker::run, this };
+#ifndef PIN_WORKER
+  _group._worker_map[_thread.get_id()] = this;
+#endif
+}
+
 void ts::Worker::join() noexcept {
   if (_thread.joinable()) {
     _thread.join();
   }
-}
-
-void ts::Worker::start() noexcept {
-  _cv.notify_all();
 }
 
 void ts::WorkerGroup::notify_closed() noexcept {
@@ -97,6 +93,11 @@ void ts::WorkerGroup::notify_closed() noexcept {
     std::scoped_lock lock(_mutex);
     _cv.notify_all();
   }
+}
+
+void ts::WorkerGroup::wait_for_start() noexcept {
+  std::unique_lock lock(_mutex);
+  _cv.wait(lock, [this]{ return _started.load(std::memory_order_relaxed); });
 }
 
 #ifdef PIN_WORKER
@@ -169,6 +170,9 @@ void ts::WorkerGroup::start() noexcept {
   for (auto i = 0; i < _size; ++i) {
     _workers[i].start();
   }
+
+  _started = true;
+  _cv.notify_all();
 }
 
 void ts::WorkerGroup::push(const ts::Job &job) noexcept {

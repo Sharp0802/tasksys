@@ -21,8 +21,6 @@ namespace ts {
 
     std::stop_token _token;
     std::jthread _thread;
-    std::mutex _mutex;
-    std::condition_variable _cv;
 
     void run();
     bool steal(Job *job) noexcept;
@@ -56,10 +54,12 @@ namespace ts {
     std::atomic_size_t _available;
     std::condition_variable _cv;
     std::mutex _mutex;
+    std::atomic_bool _started;
 
     GlobalQueue _queue;
 
     void notify_closed() noexcept;
+    void wait_for_start() noexcept;
 
 #if PIN_WORKER
     [[nodiscard]] bool is_bound(int cpu) const noexcept;
