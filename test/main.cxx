@@ -1,6 +1,7 @@
 #include "tasksys/Worker.h"
 #include "benchmark.h"
 #include <oneapi/tbb/task_group.h>
+#include <oneapi/tbb/global_control.h>
 #include <future>
 #include <random>
 
@@ -31,11 +32,12 @@ BENCHMARK(WorkerGroup__latency, ts::WorkerGroup) {
     int i;
   } res = {false, i};
 
-  p->push(
-      [&] {
-        res.b.store(true);
-      }
-  );
+  p->push({
+              [](decltype(res) *r) {
+                r->b.store(true);
+              },
+              &res
+          });
 
   while (!res.b.load(std::memory_order_acquire)) {
     _mm_pause();
@@ -43,7 +45,8 @@ BENCHMARK(WorkerGroup__latency, ts::WorkerGroup) {
 }
 
 BENCHMARK(TaskGroup__latency, tbb::task_group) {
-  p->run_and_wait([] {});
+  p->run([] {});
+  p->wait();
 }
 
 #if _DEBUG

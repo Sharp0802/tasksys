@@ -94,7 +94,13 @@ uintptr_t create_mask(uint8_t v) {
 template<size_t N>
 void initialize(std::array<ts::Job, N>& array) {
   for (auto i = 0; i < array.size(); ++i) {
-    array[i] = [=] { [[maybe_unused]] auto _ = create_mask(i); };
+    const int c = i;
+    array[i] = {
+        [] (const int* p) {
+          [[maybe_unused]] auto _ = create_mask(*p);
+        },
+        &c
+    };
   }
 }
 

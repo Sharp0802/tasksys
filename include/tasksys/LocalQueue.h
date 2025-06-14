@@ -14,42 +14,41 @@ namespace ts {
     uint64_t _id;
 #endif
 
-    std::function<void()> _fn;
+    template<typename T>
+    using Fn = void __cdecl(T *);
+
+    Fn<void> *_fn;
+    void *_data;
 
   public:
     Job() = default;
-    
-    Job(const Job &other)
-        : _fn(other._fn)
-#if _DEBUG
-          , _id(other._id)
-#endif
-          {}
+    Job(const Job &other) = default;
 
-    template<typename Fn>
-    requires (!std::is_same_v<std::decay_t<Fn>, Job>)
-    Job(Fn &&fn)
-        : _fn(fn)
+    template<typename T, typename F>
+    Job(F &&fn, T *data)
+        : _fn((Fn<void> *) static_cast<Fn<T> *>(fn)),
+          _data((void *) data)
 #if _DEBUG
-          , _id(tl_id.fetch_add(1))
+        , _id(tl_id.fetch_add(1))
 #endif
-          {}
+    {}
 
     Job &operator=(const Job &other) {
 #if _DEBUG
       _id = other._id;
 #endif
       _fn = other._fn;
+      _data = other._data;
       return *this;
     }
 
     operator bool() const {
-      return _fn.operator bool();
+      return _fn;
     }
 
     void operator()() const {
       if (_fn) {
-        _fn();
+        _fn(_data);
       }
     }
 
