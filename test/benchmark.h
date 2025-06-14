@@ -84,8 +84,8 @@ uintptr_t create_mask(uint8_t v) {
     uint8_t _array[sizeof _v];
   };
 
-  for (auto i = 0; i < sizeof _v; ++i) {
-    _array[i] = v;
+  for (unsigned char &i : _array) {
+    i = v;
   }
 
   return _v;
@@ -94,11 +94,7 @@ uintptr_t create_mask(uint8_t v) {
 template<size_t N>
 void initialize(std::array<ts::Job, N>& array) {
   for (auto i = 0; i < array.size(); ++i) {
-    auto mask = create_mask(i);
-    array[i] = {
-        reinterpret_cast<void(*)(void*)>(mask),
-        reinterpret_cast<void *>(mask)
-    };
+    array[i] = [=] { [[maybe_unused]] auto _ = create_mask(i); };
   }
 }
 

@@ -31,15 +31,11 @@ BENCHMARK(WorkerGroup__latency, ts::WorkerGroup) {
     int i;
   } res = {false, i};
 
-  std::println(">{}", res.i);
-  ts::Job job = ts::Job(
-      [](T *r) {
-        std::println("${}", r->i);
-        r->b.store(true);
-      },
-      &res
+  p->push(
+      [&] {
+        res.b.store(true);
+      }
   );
-  p->push(job);
 
   while (!res.b.load(std::memory_order_acquire)) {
     _mm_pause();
@@ -47,10 +43,10 @@ BENCHMARK(WorkerGroup__latency, ts::WorkerGroup) {
 }
 
 BENCHMARK(TaskGroup__latency, tbb::task_group) {
-  p->run([] {});
-  p->wait();
+  p->run_and_wait([] {});
 }
 
+#if _DEBUG
 template<size_t N>
 bool LocalQueue__integrity() {
   static constexpr std::string NAME = "LocalQueue";
@@ -60,8 +56,7 @@ bool LocalQueue__integrity() {
 
   ts::LocalQueue local{N};
 
-  std::array<ts::Job, N> jobs{};
-
+  std::vector<ts::Job> jobs(N);
   // steal before push : to make chaos
   for (auto i = 0; i < N; ++i) {
     tg.run([&, i] {
@@ -118,7 +113,7 @@ bool GlobalQueue__integrity() {
 
   ts::GlobalQueue local{N};
 
-  std::array<ts::Job, N> jobs{};
+  std::vector<ts::Job> jobs(N);
   for (auto i = 0; i < N; ++i) {
     tg.run([&, i] {
       add_delay();
@@ -165,6 +160,7 @@ bool GlobalQueue__integrity() {
 
   return !failed;
 }
+#endif
 
 int main() {
   initialize(s_test_jobs);
@@ -185,6 +181,7 @@ int main() {
   tbb::task_group tg;
   BENCHMARK_RUN(TaskGroup__latency, tg);
 
+#if _DEBUG
   std::println("= TEST");
   std::flush(std::cout);
   std::flush(std::cerr);
@@ -194,6 +191,7 @@ int main() {
   if (!li || !gi) {
     return -1;
   }
+#endif
 
   return 0;
 }
