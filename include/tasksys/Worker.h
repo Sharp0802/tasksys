@@ -32,5 +32,8 @@ namespace ts {
 
     void stop();
     void push(const Job &job) const;
+
+    [[nodiscard]]
+    std::thread::id thread_id() const;
   };
 }

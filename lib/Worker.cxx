@@ -105,4 +105,8 @@ namespace ts {
 #endif
     }
   }
+
+  std::thread::id Worker::thread_id() const {
+    return _thread.get_id();
+  }
 }
