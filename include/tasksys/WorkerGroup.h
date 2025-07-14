@@ -9,15 +9,29 @@
 namespace ts {
   class WorkerGroup {
     std::vector<ChaseLevDeque> _queues;
-    std::vector<Worker> _workers;
+    FAAQueue _global;
     std::unordered_map<std::thread::id, Worker*> _worker_map;
+    std::vector<Worker> _workers;
 
   public:
     explicit WorkerGroup(size_t size) : _queues(size) {
       _workers.reserve(size);
       for (size_t i = 0; i < size; i++) {
-        auto &worker = _workers.emplace_back(i, _queues);
+        _workers.emplace_back(i, _queues, _global);
+      }
+
+      for (auto &worker : _workers) {
         _worker_map.emplace(worker.thread_id(), &worker);
+      }
+    }
+
+    ~WorkerGroup() {
+      stop();
+    }
+
+    void stop() {
+      for (auto &worker : _workers) {
+        worker.stop();
       }
     }
 
@@ -27,7 +41,9 @@ namespace ts {
         return;
       }
 
-      // HERE: how to push job?
+      while (!_global.push(job)) {
+        std::this_thread::yield();
+      }
     }
   };
 }

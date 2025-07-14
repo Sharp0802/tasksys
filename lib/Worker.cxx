@@ -15,6 +15,15 @@ namespace ts {
     return false;
   }
 
+  bool Worker::process_global_one() const {
+    if (const auto job = _global.pop()) {
+      job.value()();
+      return true;
+    }
+
+    return false;
+  }
+
   ChaseLevDeque &Worker::steal_target() {
     do {
       ++_steal_id % _queues.size();
@@ -39,7 +48,7 @@ namespace ts {
 
     while (!token.stop_requested()) {
       auto did = false;
-      for (auto i = 0; i < SPIN_LIMIT; ++i) {
+      for (auto i = 0; i < LOCAL_LIMIT; ++i) {
         if (process_one()) {
           did = true;
           break;
@@ -50,6 +59,18 @@ namespace ts {
 #else
           std::this_thread::yield();
 #endif
+      }
+      if (did) {
+        continue;
+      }
+
+      for (auto i = 0; i < GLOBAL_LIMIT; ++i) {
+        if (process_global_one()) {
+          did = true;
+          break;
+        }
+
+        std::this_thread::yield();
       }
       if (did) {
         continue;
@@ -72,10 +93,11 @@ namespace ts {
     }
   }
 
-  Worker::Worker(const size_t id, std::vector<ChaseLevDeque> &queues)
+  Worker::Worker(const size_t id, std::vector<ChaseLevDeque> &queues, FAAQueue &global)
     : _id(id),
       _steal_id(id),
       _queues(queues),
+      _global(global),
       _thread(&Worker::run, this, _ss.get_token()) {
   }
 
