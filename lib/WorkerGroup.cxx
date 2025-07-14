@@ -1,24 +1,32 @@
 #include "tasksys/WorkerGroup.h"
 
+#include "tasksys/Memory.h"
+
 namespace ts {
-  WorkerGroup::WorkerGroup(size_t size): _queues(size) {
-    _workers.reserve(size);
-    for (size_t i = 0; i < size; i++) {
-      _workers.emplace_back(i, _queues, _global);
+  WorkerGroup::WorkerGroup(size_t size): _queues(size), _worker_count(size) {
+    _workers = alloc<Worker>(size);
+    for (size_t i = 0; i < size; ++i) {
+      new (&_workers[i]) Worker(i, _queues, _global);
     }
 
-    for (auto &worker : _workers) {
-      _worker_map.emplace(worker.thread_id(), &worker);
+    for (size_t i = 0; i < size; ++i) {
+      _worker_map.emplace(_workers[i].thread_id(), &_workers[i]);
     }
   }
 
   WorkerGroup::~WorkerGroup() {
     stop();
+
+    for (auto i = 0; i < _worker_count; ++i) {
+      _workers[i].~Worker();
+    }
+
+    free(_workers);
   }
 
   void WorkerGroup::stop() {
-    for (auto &worker : _workers) {
-      worker.stop();
+    for (auto i = 0; i < _worker_count; ++i) {
+      _workers[i].stop();
     }
   }
 
