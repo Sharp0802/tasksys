@@ -26,7 +26,7 @@ namespace ts {
 
   ChaseLevDeque &Worker::steal_target() {
     do {
-      ++_steal_id % _queues.size();
+      _steal_id = (_steal_id + 1) % _queues.size();
     }
     while (_steal_id == _id);
     return _queues[_steal_id];
