@@ -46,7 +46,7 @@ namespace ts {
 
       if (!_tail.compare_exchange_weak(
         tail, tail + 1,
-        std::memory_order_relaxed,
+        std::memory_order_release,
         std::memory_order_relaxed)) {
         // lose the race
         continue;
