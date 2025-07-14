@@ -1,5 +1,14 @@
 #include "tasksys/ChaseLevDeque.h"
 
+/*
+ * Implementation is from:
+ *
+ * Correct and Efficient Work-Stealing for Weak Memory Models
+ *
+ * Author: Nhat Minh Lê, Antoniu Pop, Albert Cohen, Francesco Zappa Nardelli
+ *    Org: INRIA and ENS Paris
+ */
+
 namespace ts {
   std::optional<Job> ChaseLevDeque::pop() {
     // This is the 'take' operation from the paper, executed by the owner thread.
