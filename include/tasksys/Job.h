@@ -24,7 +24,7 @@ namespace ts {
 
   static_assert(sizeof(Job) == 2 * sizeof(void *));
 
-  static_assert(__atomic_always_lock_free(sizeof(Job), nullptr));
+  static_assert(std::atomic<Job>::is_always_lock_free);
 
 #ifndef TS_USE_CUSTOM_JOBSLOT
   using JobSlot = std::atomic<Job>;
