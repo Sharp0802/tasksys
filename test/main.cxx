@@ -4,6 +4,7 @@
 #include <x86intrin.h>
 #include <oneapi/tbb/task_group.h>
 
+#include "tasksys/Task.h"
 #include "tasksys/WorkerGroup.h"
 
 constexpr size_t BOIL_SAMPLE = 16384;
@@ -16,7 +17,7 @@ unsigned long long rdtsc() {
 
 __attribute__((optimize("O0")))
 void test_worker_group(int sample) {
-  ts::WorkerGroup wg(8);
+  ts::WorkerGroup wg(std::thread::hardware_concurrency());
 
   const auto begin_time = std::chrono::high_resolution_clock::now();
   const auto begin = rdtsc();
@@ -58,9 +59,27 @@ void test_tbb(int sample) {
   std::flush(std::cout);
 }
 
+ts::Task<int> test_task_inner() {
+  std::println("2:{}", std::this_thread::get_id());
+  co_return 0;
+}
+
+ts::Task<> test_task(ts::WorkerGroup& wg) {
+  std::println("1:{}", std::this_thread::get_id());
+  co_await test_task_inner().schedule(wg);
+  std::println("3:{}", std::this_thread::get_id());
+  co_return;
+}
+
 int main() {
   test_worker_group(BOIL_SAMPLE);
   test_tbb(BOIL_SAMPLE);
   test_worker_group(TEST_SAMPLE);
   test_tbb(TEST_SAMPLE);
+
+  {
+    std::println("0:{}", std::this_thread::get_id());
+    ts::WorkerGroup wg(8);
+    test_task(wg).schedule(wg).wait();
+  }
 }
