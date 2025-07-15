@@ -6,7 +6,7 @@
 namespace ts {
   template<typename T>
   T *alloc(const std::size_t size) {
-    auto p = std::aligned_alloc(sizeof(T) * size, alignof(T));
+    auto p = std::aligned_alloc(alignof(T), sizeof(T) * size);
     if (!p) {
       throw std::bad_alloc();
     }
