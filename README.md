@@ -10,7 +10,7 @@ Welcome to `tasksys`, Coroutine-based Task System for modern C++ (C++26)
 ## Progress
 
 - [x] Implement basic Job-system
-- [ ] Implement coroutine-base task class
+- [x] Implement coroutine-base task class
 - [ ] Create built-in IO-related awaitables
 
 ## Summary
