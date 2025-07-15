@@ -23,7 +23,7 @@ namespace ts {
     ChaseLevDeque(const ChaseLevDeque &) = delete;
     ChaseLevDeque &operator=(const ChaseLevDeque &) = delete;
 
-    ChaseLevDeque() : _buffer{}, _top(0), _bottom(0) {
+    ChaseLevDeque() : _buffer{}, _top(1), _bottom(1) {
     }
 
     std::optional<Job> pop();
