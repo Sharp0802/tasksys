@@ -18,7 +18,12 @@ Welcome to `tasksys`, Coroutine-based Task System for modern C++ (C++26)
 ```
 #include <tasksys/Task.h>
 
+ts::Task<> some_child_function() {
+  co_return;
+}
+
 ts::Task<> some_function() {
+  co_await some_child_function();
   co_return;
 }
 
