@@ -1,5 +1,9 @@
 # tasksys
 
+> [!WARNING]
+> `Sharp0802/tasksys` is merged into `Sharp0802/dfl`.
+> Please use `dfl` instead of this project.
+
 Welcome to `tasksys`, Coroutine-based Task System for modern C++ (C++23)
 
 ## Dependency
