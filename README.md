@@ -1,6 +1,6 @@
 # tasksys
 
-Welcome to `tasksys`, Coroutine-based Task System for modern C++ (C++26)
+Welcome to `tasksys`, Coroutine-based Task System for modern C++ (C++23)
 
 ## Dependency
 
