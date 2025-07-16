@@ -21,7 +21,6 @@ namespace ts {
 
     std::suspend_always initial_suspend() noexcept { return {}; }
 
-    // Store the result value when the coroutine co_returns a value
     void return_value(T value) {
       _result.template emplace<T>(std::move(value));
     }
@@ -71,6 +70,7 @@ namespace ts {
     std::variant<std::monostate, T, std::exception_ptr> _result;
     std::atomic<std::coroutine_handle<>> _continuation{nullptr};
     std::atomic<bool> _is_ready{false};
+    WorkerGroup *_wg = nullptr;
   };
 
   template<>
@@ -81,7 +81,7 @@ namespace ts {
     Task<void> get_return_object();
     // NOLINTNEXTLINE(*-convert-member-functions-to-static)
     std::suspend_always initial_suspend() noexcept { return {}; }
-    void return_void() { _exception = nullptr; } // Signal success
+    void return_void() { _exception = nullptr; }
     void unhandled_exception() { _exception = std::current_exception(); }
 
     // NOLINTNEXTLINE(*-convert-member-functions-to-static)
@@ -124,6 +124,7 @@ namespace ts {
     std::exception_ptr _exception;
     std::atomic<std::coroutine_handle<>> _continuation{nullptr};
     std::atomic<bool> _is_ready{false};
+    WorkerGroup *_wg = nullptr;
   };
 
 
@@ -148,28 +149,43 @@ namespace ts {
       }
     }
 
+
     auto operator co_await() {
       struct Awaiter {
         handle_type _handle;
 
-        [[nodiscard]]
         bool await_ready() const noexcept {
           return !_handle || _handle.promise()._is_ready.load(std::memory_order_acquire);
         }
 
-        std::coroutine_handle<> await_suspend(std::coroutine_handle<> continuation) noexcept {
-          _handle.promise().set_continuation(continuation);
+        std::coroutine_handle<> await_suspend(std::coroutine_handle<> awaiting_coro) noexcept {
+          auto& child_promise = _handle.promise();
+          child_promise.set_continuation(awaiting_coro);
+
+          // 1. Read the worker group from the thread-local context.
+          if (WorkerGroup* wg = WorkerGroup::get_current()) {
+            // 2. Schedule the child task using the discovered context.
+            wg->push({[](void* p) {
+                // This lambda itself needs to set the context for its own execution
+                auto h = handle_type::from_address(p);
+                // We could store wg in the promise to make it available here,
+                // or have the worker loop do it for us. The latter is cleaner.
+                h.resume();
+            }, _handle.address()});
+          } else {
+            // ERROR: A task was awaited from a context without a scheduler
+            // (e.g., from the main thread without being scheduled first).
+            // This is a logic error in user code. We should resume the parent
+            // immediately, which will likely cause it to deadlock on `wait()`,
+            // making the bug obvious.
+            return awaiting_coro;
+          }
+
+          // 3. Suspend the parent.
           return std::noop_coroutine();
         }
 
         T await_resume() {
-          if (!_handle) {
-            // Handle case where a moved-from task is awaited
-            // In a real engine, this might assert or throw
-            if constexpr (!std::is_void_v<T>) {
-              throw std::runtime_error("Awaited a moved-from Task");
-            }
-          }
           return _handle.promise().get_result();
         }
       };

@@ -8,6 +8,8 @@
 #include "FAAQueue.h"
 
 namespace ts {
+  class WorkerGroup;
+
   class Worker {
     static constexpr int LOCAL_LIMIT = 512;
     static constexpr int GLOBAL_LIMIT = 64;
@@ -16,21 +18,22 @@ namespace ts {
     std::stop_source _ss;
 
     size_t _id;
-    size_t _steal_id;
     std::vector<ChaseLevDeque> &_queues;
     FAAQueue &_global;
+    WorkerGroup &_wg;
 
     std::jthread _thread;
 
+    void run_job(Job job) const;
 
+    ChaseLevDeque &steal_target() const;
+    [[nodiscard]] bool steal_one() const;
     [[nodiscard]] bool process_one() const;
     [[nodiscard]] bool process_global_one() const;
-    ChaseLevDeque &steal_target();
-    bool steal_one();
-    void run(const std::stop_token &token);
+    void run(const std::stop_token &token) const;
 
   public:
-    Worker(size_t id, std::vector<ChaseLevDeque> &queues, FAAQueue &global);
+    Worker(size_t id, WorkerGroup &wg, std::vector<ChaseLevDeque> &queues, FAAQueue &global);
     ~Worker();
 
     void stop();

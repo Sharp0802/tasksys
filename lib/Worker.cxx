@@ -1,30 +1,30 @@
 #include "tasksys/Worker.h"
 
+#include "tasksys/WorkerGroup.h"
+
 #if defined(__i386__) || defined(__x86_64__)
 #include <x86intrin.h>
 #define TS_IS_X86 1
 #endif
 
+namespace {
+  void relax() {
+#if TS_IS_X86
+    _mm_pause();
+#else
+    std::this_thread::yield();
+#endif
+  }
+}
+
 namespace ts {
-  bool Worker::process_one() const {
-    if (const auto job = _queues[_id].pop()) {
-      job.value()();
-      return true;
-    }
-
-    return false;
+  void Worker::run_job(const Job job) const {
+    WorkerGroup::set_current(_wg);
+    job();
   }
 
-  bool Worker::process_global_one() const {
-    if (const auto job = _global.pop()) {
-      job.value()();
-      return true;
-    }
-
-    return false;
-  }
-
-  ChaseLevDeque &Worker::steal_target() {
+  ChaseLevDeque &Worker::steal_target() const {
+    static size_t _steal_id = _id;
     do {
       _steal_id = (_steal_id + 1) % _queues.size();
     }
@@ -32,72 +32,65 @@ namespace ts {
     return _queues[_steal_id];
   }
 
-  bool Worker::steal_one() {
-    for (auto i = 0; i < _queues.size() - 1; ++i) {
-      if (const auto job = steal_target().steal()) {
-        job.value()();
-        return true;
+  bool Worker::steal_one() const {
+    for (auto i = 0; i < STEAL_LIMIT; ++i) {
+      for (auto j = 0; j < _queues.size() - 1; ++j) {
+        if (const auto job = steal_target().steal()) {
+          run_job(job.value());
+          return true;
+        }
       }
+
+      relax();
     }
 
     return false;
   }
 
-  void Worker::run(const std::stop_token &token) {
+  bool Worker::process_one() const {
+    for (auto i = 0; i < LOCAL_LIMIT; ++i) {
+      if (const auto job = _queues[_id].pop()) {
+        run_job(job.value());
+        return true;
+      }
+
+      relax();
+    }
+
+    return false;
+  }
+
+  bool Worker::process_global_one() const {
+    for (auto i = 0; i < GLOBAL_LIMIT; ++i) {
+      if (const auto job = _global.pop()) {
+        run_job(job.value());
+        return true;
+      }
+
+      relax();
+    }
+
+    return false;
+  }
+
+  void Worker::run(const std::stop_token &token) const {
     using namespace std::chrono_literals;
 
     while (!token.stop_requested()) {
-      auto did = false;
-      for (auto i = 0; i < LOCAL_LIMIT; ++i) {
-        if (process_one()) {
-          did = true;
-          break;
-        }
-
-#if TS_IS_X86
-        _mm_pause();
-#else
-          std::this_thread::yield();
-#endif
-      }
-      if (did) {
-        continue;
-      }
-
-      for (auto i = 0; i < GLOBAL_LIMIT; ++i) {
-        if (process_global_one()) {
-          did = true;
-          break;
-        }
-
-        std::this_thread::yield();
-      }
-      if (did) {
-        continue;
-      }
-
-      for (auto i = 0; i < STEAL_LIMIT; ++i) {
-        if (steal_one()) {
-          did = true;
-          break;
-        }
-
-        std::this_thread::yield();
-      }
-      if (did) {
-        continue;
-      }
+      if (process_one()) continue;
+      if (process_global_one()) continue;
+      if (steal_one()) continue;
 
       using namespace std::chrono_literals;
-      std::this_thread::sleep_for(1ms);
+      std::this_thread::sleep_for(100ns);
     }
   }
 
-  Worker::Worker(const size_t id, std::vector<ChaseLevDeque> &queues, FAAQueue &global)
+  Worker::Worker(const size_t id, WorkerGroup &wg, std::vector<ChaseLevDeque> &queues, FAAQueue &global)
     : _id(id),
-      _steal_id(id),
       _queues(queues),
       _global(global),
+      _wg(wg),
       _thread(&Worker::run, this, _ss.get_token()) {
   }
 
@@ -120,11 +113,7 @@ namespace ts {
         continue;
       }
 
-#if TS_IS_X86
-      _mm_pause();
-#else
-        std::this_thread::yield();
-#endif
+      relax();
     }
   }
 

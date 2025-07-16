@@ -2,11 +2,23 @@
 
 #include "tasksys/Memory.h"
 
+namespace {
+  thread_local ts::WorkerGroup *_wg = nullptr;
+}
+
 namespace ts {
-  WorkerGroup::WorkerGroup(size_t size): _queues(size), _worker_count(size) {
+  void WorkerGroup::set_current(WorkerGroup &wg) {
+    _wg = &wg;
+  }
+
+  WorkerGroup * WorkerGroup::get_current() {
+    return _wg;
+  }
+
+  WorkerGroup::WorkerGroup(const size_t size): _worker_count(size), _queues(size) {
     _workers = alloc<Worker>(size);
     for (size_t i = 0; i < size; ++i) {
-      new (&_workers[i]) Worker(i, _queues, _global);
+      new (&_workers[i]) Worker(i, *this, _queues, _global);
     }
 
     for (size_t i = 0; i < size; ++i) {

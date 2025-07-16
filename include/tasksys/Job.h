@@ -16,10 +16,7 @@ namespace ts {
     [[nodiscard]] decltype(_fn) fn() const { return _fn; }
     [[nodiscard]] const void *data() const { return _data; }
 
-    void operator()() const {
-      Assert(_fn && "_fn cannot be null");
-      _fn(_data);
-    }
+    void operator()() const;
   };
 
   static_assert(sizeof(Job) == 2 * sizeof(void *));

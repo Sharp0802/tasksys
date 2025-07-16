@@ -64,9 +64,9 @@ ts::Task<int> test_task_inner() {
   co_return 0;
 }
 
-ts::Task<> test_task(ts::WorkerGroup& wg) {
+ts::Task<> test_task() {
   std::println("1:{}", std::this_thread::get_id());
-  co_await test_task_inner().schedule(wg);
+  co_await test_task_inner();
   std::println("3:{}", std::this_thread::get_id());
   co_return;
 }
@@ -80,6 +80,6 @@ int main() {
   {
     std::println("0:{}", std::this_thread::get_id());
     ts::WorkerGroup wg(8);
-    test_task(wg).schedule(wg).wait();
+    test_task().schedule(wg).wait();
   }
 }
