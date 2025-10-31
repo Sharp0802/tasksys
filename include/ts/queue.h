@@ -1,5 +1,7 @@
 #pragma once
 
+#define TS_QUEUE_H
+
 #include <atomic>
 #include <optional>
 #include <vector>
@@ -100,3 +102,5 @@ namespace ts {
 namespace ts::__ide {
   constexpr auto __ide = _;
 }
+
+#undef TS_QUEUE_H

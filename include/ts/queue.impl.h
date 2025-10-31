@@ -1,5 +1,9 @@
 #pragma once
 
+#ifndef TS_QUEUE_H
+#error "Do not include queue.impl.h directly; Use queue.h instead."
+#endif
+
 #include <cassert>
 
 namespace ts {
