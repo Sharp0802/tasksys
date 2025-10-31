@@ -31,8 +31,6 @@ endif ()
 
 set(TASKSYS_BUILD_TYPE SHARED CACHE STRING "Library type of tasksys (SHARED|STATIC)")
 
-add_subdirectory(test)
-
 file(GLOB_RECURSE SOURCES lib/*)
 file(GLOB_RECURSE HEADERS include/*)
 
