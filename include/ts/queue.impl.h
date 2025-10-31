@@ -111,28 +111,38 @@ namespace ts {
     assert(std::popcount(size) == 1);
   }
 
+  /*
+   * Implementation of chase-lev deque is from below paper:
+   *
+   * - name: 'Correct and Efficient Work-Stealing for Weak Memory Models'
+   * - author: 'Nhat Minh Lê', 'Antoniu Pop', 'Albert Cohen', 'Francesco Zappa Nardelli'
+   * - inst: INRIA and ENS Paris
+   */
+
   template<atom T>
   std::optional<T> chaselev<T>::take() {
     const auto bottom = _bottom.load(acquire) - 1;
     _bottom.store(bottom, relaxed);
 
-    auto top = _top.load(acquire);
+    std::atomic_thread_fence(seq_cst);
+
+    auto top = _top.load(relaxed);
     if (top > bottom) {
       /* queue is empty; restore */
       _bottom.store(bottom + 1, relaxed);
       return std::nullopt;
     }
 
-    std::optional x = _buffer[bottom & _mask].load(acquire);
+    std::optional x = _buffer[bottom & _mask].load(relaxed);
 
     if (top == bottom) {
       /* race on last item */
-      if (!_top.compare_exchange_strong(top, top + 1, acq_rel, relaxed)) {
+      if (!_top.compare_exchange_strong(top, top + 1, seq_cst, relaxed)) {
         /* race failed */
         x = std::nullopt;
       }
 
-      _bottom.store(bottom + 1, release);
+      _bottom.store(bottom + 1, relaxed);
     }
 
     return x;
@@ -141,13 +151,14 @@ namespace ts {
   template<atom T>
   std::optional<T> chaselev<T>::steal() {
     auto top = _top.load(acquire);
+    std::atomic_thread_fence(seq_cst);
     if (top >= _bottom.load(acquire)) {
       return std::nullopt;
     }
 
     /* non-empty */
     T x = _buffer[top & _mask].load(relaxed);
-    if (!_top.compare_exchange_strong(top, top + 1, acq_rel, relaxed))
+    if (!_top.compare_exchange_strong(top, top + 1, seq_cst, relaxed))
       /* race failed */
         return std::nullopt;
 
@@ -156,7 +167,7 @@ namespace ts {
 
   template<atom T>
   bool chaselev<T>::push(const T x) {
-    const size_t bottom = _bottom.load(acquire);
+    const size_t bottom = _bottom.load(relaxed);
     const size_t top = _top.load(acquire);
 
     if (bottom - top > _mask) {
@@ -165,7 +176,8 @@ namespace ts {
     }
 
     _buffer[bottom & _mask].store(x, relaxed);
-    _bottom.store(bottom + 1, release);
+    std::atomic_thread_fence(release);
+    _bottom.store(bottom + 1, relaxed);
 
     return true;
   }
