@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <cstddef>
 #include <functional>
 #include <utility>
@@ -29,17 +30,31 @@ namespace ts {
     job(const job &) = delete;
     job &operator=(const job &) = delete;
 
-    [[nodiscard]] size_t size() const { return _end - _begin; }
-    [[nodiscard]] bool empty() const { return _begin == _end; }
+    [[nodiscard]]
+    size_t size() const {
+      assert(_begin != -1 && _end != -1);
+
+      return _end - _begin;
+    }
+    [[nodiscard]]
+    bool empty() const {
+      assert(_begin != -1 && _end != -1);
+
+      return _begin == _end;
+    }
 
     [[nodiscard]]
     std::pair<job, job> split(const size_t at) const {
+      assert(_begin != -1 && _end != -1);
+
       job left(_callback, _begin, _begin + at);
       job right(_callback, _begin + at, _end);
       return std::make_pair(std::move(left), std::move(right));
     }
 
     void call() const {
+      assert(_begin != -1 && _end != -1);
+
       for (size_t i = _begin; i < _end; ++i) {
         _callback(i);
       }
