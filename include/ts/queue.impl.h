@@ -58,7 +58,7 @@ namespace ts {
   }
 
 
-  template<atom T>
+  template<typename T>
   vyukov<T>::vyukov(const size_t size)
     : _buffer(size),
       _mask(size - 1),
@@ -72,7 +72,7 @@ namespace ts {
     std::atomic_thread_fence(release);
   }
 
-  template<atom T>
+  template<typename T>
   bool vyukov<T>::push(T x) {
     slot* c;
 
@@ -94,12 +94,12 @@ namespace ts {
       _mm_pause();
     }
 
-    c->data.store(x, relaxed);
+    c->data = x;
     c->seq.store(pos + 1, release);
     return true;
   }
 
-  template<atom T>
+  template<typename T>
   std::optional<T> vyukov<T>::pop() {
     slot* c;
 
@@ -121,7 +121,7 @@ namespace ts {
       _mm_pause();
     }
 
-    auto data = c->data.load(acquire);
+    auto data = c->data;
     c->seq.store(pos + _mask + 1, release);
     return data;
   }

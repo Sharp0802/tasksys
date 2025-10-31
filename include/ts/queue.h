@@ -54,11 +54,11 @@ namespace ts {
   /**
    * Dmitry Vyukov's mpmc queue implementation
    */
-  template<atom T>
+  template<typename T>
   class vyukov {
     struct slot {
       std::atomic_size_t seq;
-      std::atomic<T> data;
+      T data;
     };
 
     std::vector<slot> _buffer;
