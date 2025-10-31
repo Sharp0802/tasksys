@@ -5,6 +5,7 @@
 #endif
 
 #include <cassert>
+#include <emmintrin.h>
 
 namespace ts {
   using std::memory_order::relaxed;
@@ -58,47 +59,71 @@ namespace ts {
 
 
   template<atom T>
-  faa<T>::faa(const size_t size)
-    : _queue(size),
+  vyukov<T>::vyukov(const size_t size)
+    : _buffer(size),
       _mask(size - 1),
       _head(0),
-      _prepared(0),
       _tail(0) {
     assert(std::popcount(size) == 1);
+
+    for (size_t i = 0; i < size; ++i) {
+      _buffer[i].seq.store(i, relaxed);
+    }
+    std::atomic_thread_fence(release);
   }
 
   template<atom T>
-  std::optional<typename faa<T>::item> faa<T>::push(T x) {
-    auto head = _head.load(acquire);
-    do {
-      if (head - _tail.load(acquire) >= _queue.size()) {
-        return std::nullopt;
+  bool vyukov<T>::push(T x) {
+    slot* c;
+
+    auto pos = _tail.load(relaxed);
+    for (;;) {
+      c = &_buffer[pos & _mask];
+      const auto seq = c->seq.load(acquire);
+
+      const auto diff = static_cast<intptr_t>(seq) - static_cast<intptr_t>(pos);
+      if (diff == 0) {
+        if (_tail.compare_exchange_weak(pos, pos + 1, relaxed))
+          break;
+      } else if (diff < 0) {
+        return false;
+      } else {
+        pos = _tail.load(relaxed);
       }
-    } while (!_head.compare_exchange_weak(head, head + 1, acq_rel, acquire));
 
-    const auto i = head & _mask;
-    _queue[i] = x;
+      _mm_pause();
+    }
 
-    decltype(head) prepared;
-    do {
-      prepared = head;
-    } while (!_prepared.compare_exchange_weak(prepared, prepared + 1, acq_rel, acquire));
-
-    return item{&_queue[i]};
+    c->data.store(x, relaxed);
+    c->seq.store(pos + 1, release);
+    return true;
   }
 
   template<atom T>
-  std::optional<typename faa<T>::item> faa<T>::pop() {
-    std::optional<item> x;
+  std::optional<T> vyukov<T>::pop() {
+    slot* c;
 
-    auto tail = _tail.load(acquire);
-    do {
-      if (tail == _prepared.load(acquire))
+    auto pos = _head.load(relaxed);
+    for (;;) {
+      c = &_buffer[pos & _mask];
+      const auto seq = c->seq.load(acquire);
+
+      const auto dif = static_cast<intptr_t>(seq) - static_cast<intptr_t>(pos + 1);
+      if (dif == 0) {
+        if (_head.compare_exchange_weak(pos, pos + 1, relaxed))
+          break;
+      } else if (dif < 0) {
         return std::nullopt;
-      x = item{&_queue[tail & _mask]};
-    } while (!_tail.compare_exchange_weak(tail, tail + 1, acq_rel, acquire));
+      } else {
+        pos = _head.load(relaxed);
+      }
 
-    return x;
+      _mm_pause();
+    }
+
+    auto data = c->data.load(acquire);
+    c->seq.store(pos + _mask + 1, release);
+    return data;
   }
 
 

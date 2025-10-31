@@ -52,23 +52,26 @@ namespace ts {
   concept atom = std::is_trivially_copyable_v<T> && std::atomic<T>::is_always_lock_free;
 
   /**
-   * fetch-and-add queue implementation
+   * Dmitry Vyukov's mpmc queue implementation
    */
   template<atom T>
-  class faa {
-    std::vector<T> _queue;
+  class vyukov {
+    struct slot {
+      std::atomic_size_t seq;
+      std::atomic<T> data;
+    };
+
+    std::vector<slot> _buffer;
     size_t _mask;
 
     alignas(CACHELINE_SIZE) std::atomic_size_t _head;
-    alignas(CACHELINE_SIZE) std::atomic_size_t _prepared;
     alignas(CACHELINE_SIZE) std::atomic_size_t _tail;
 
   public:
-    using item = queue_item<T>;
+    explicit vyukov(size_t size);
 
-    explicit faa(size_t size);
-    std::optional<item> push(T x);
-    std::optional<item> pop();
+    bool push(T x);
+    std::optional<T> pop();
   };
 
   /**
