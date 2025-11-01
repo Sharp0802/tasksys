@@ -3,47 +3,50 @@
 #define TS_QUEUE_H
 
 #include <atomic>
+#include <memory>
 #include <optional>
 #include <vector>
 
 namespace ts {
-  template<typename T>
-  class queue_item {
-    const T *_p;
-
-  public:
-    queue_item();
-    explicit queue_item(const T *ptr);
-
-    const T &read();
-  };
-
   /**
-   * Bounded queue implementation
-   * for single-threaded manipulation and multithreaded viewing.
+   * Unbounded ring queue
    */
   template<typename T>
   class queue {
-    std::vector<T> _queue;
+    std::unique_ptr<T[]> _buffer;
     size_t _mask;
-    size_t _bottom;
-    size_t _top;
+    size_t _tail;
+    size_t _head;
+
+    void resize(size_t size);
 
   public:
-    using item = queue_item<T>;
+    queue();
 
-    /**
-     * Creates new queue.
-     *
-     * @param size Capacity of queue. Must be power of 2.
-     */
-    explicit queue(size_t size);
+    [[nodiscard]] size_t size() const { return _head - _tail; }
+    [[nodiscard]] bool empty() const { return _tail == _head; }
 
-    [[nodiscard]] size_t size() const { return _top - _bottom; }
-    [[nodiscard]] bool empty() const { return _bottom == _top; }
-
-    std::optional<item> push(T x);
+    void push(T x);
     std::optional<T> pop();
+  };
+
+  /**
+   * Object pool implementation
+   * for single-thread
+   * based on unbounded ring queue
+   */
+  template<typename T>
+  class pool {
+    queue<T*> _queue;
+
+  public:
+    pool();
+    ~pool();
+
+    template<typename... Args>
+    T *rent(Args&&... args);
+
+    void yield(T *p);
   };
 
   constexpr size_t CACHELINE_SIZE = std::hardware_destructive_interference_size;

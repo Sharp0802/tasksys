@@ -15,48 +15,92 @@ namespace ts {
   using std::memory_order::seq_cst;
 
   template<typename T>
-  queue_item<T>::queue_item(): _p(nullptr) {
-  }
-
-  template<typename T>
-  queue_item<T>::queue_item(const T *ptr): _p(ptr) {
-    assert(ptr != nullptr);
-  }
-
-  template<typename T>
-  const T & queue_item<T>::read() {
-    std::atomic_thread_fence(acquire);
-    return *_p;
-  }
-
-  template<typename T>
-  queue<T>::queue(const size_t size)
-    : _queue(size),
-      _mask(size - 1),
-      _bottom(0),
-      _top(0) {
+  void queue<T>::resize(size_t size) {
     assert(std::popcount(size) == 1);
+    assert(size > _mask + 1);
+
+    auto new_v = std::make_unique<T[]>(size);
+    for (size_t i = 0; i < _head - _tail; ++i) {
+      new_v[i] = std::move_if_noexcept(_buffer[(_tail + i) & _mask]);
+    }
+
+    _buffer.swap(new_v);
+    _mask = size - 1;
+    _head -= _tail;
+    _tail = 0;
   }
 
   template<typename T>
-  std::optional<typename queue<T>::item> queue<T>::push(const T x) {
-    if (size() >= _queue.size())
-      return std::nullopt;
+  queue<T>::queue()
+    : _buffer(std::make_unique<T[]>(16)),
+      _mask(15),
+      _tail(0),
+      _head(0) {
+  }
 
-    const size_t i = _top++ & _mask;
-    _queue[i] = x;
-    std::atomic_thread_fence(release);
+  template<typename T>
+  void queue<T>::push(T x) {
+    if (_head - _tail > _mask) {
+      resize((_mask + 1) * 2);
+    }
 
-    return item{&_queue[i]};
+    _buffer[_head++ & _mask] = std::move_if_noexcept(x);
   }
 
   template<typename T>
   std::optional<T> queue<T>::pop() {
-    if (empty())
+    if (empty()) {
       return std::nullopt;
-    return _queue[_bottom++ & _mask];
+    }
+
+    return std::move_if_noexcept(_buffer[_tail++ & _mask]);
   }
 
+  template<typename T>
+  pool<T>::pool() {
+  }
+
+  template<typename T>
+  pool<T>::~pool() {
+    while (true) {
+      if (auto p = _queue.pop()) {
+        delete p.value();
+        continue;
+      }
+
+      break;
+    }
+  }
+
+  template<typename T>
+  template<typename... Args>
+  T *pool<T>::rent(Args &&... args) {
+    if (auto v = _queue.pop()) {
+      auto p = v.value();
+      try {
+        new(p) T(std::forward<Args>(args)...);
+        return p;
+      } catch (...) {
+        delete p;
+        throw;
+      }
+    }
+
+    return new T(std::forward<Args>(args)...);
+  }
+
+  template<typename T>
+  void pool<T>::yield(T *p) {
+    assert(p != nullptr);
+
+    p->~T();
+    try {
+      _queue.push(p);
+    } catch (...) {
+      delete p;
+      throw;
+    }
+  }
 
   template<typename T>
   vyukov<T>::vyukov(const size_t size)
@@ -74,7 +118,7 @@ namespace ts {
 
   template<typename T>
   bool vyukov<T>::push(T x) {
-    slot* c;
+    slot *c;
 
     auto pos = _tail.load(relaxed);
     for (;;) {
@@ -85,9 +129,11 @@ namespace ts {
       if (diff == 0) {
         if (_tail.compare_exchange_weak(pos, pos + 1, relaxed))
           break;
-      } else if (diff < 0) {
+      }
+      else if (diff < 0) {
         return false;
-      } else {
+      }
+      else {
         pos = _tail.load(relaxed);
       }
 
@@ -101,7 +147,7 @@ namespace ts {
 
   template<typename T>
   std::optional<T> vyukov<T>::pop() {
-    slot* c;
+    slot *c;
 
     auto pos = _head.load(relaxed);
     for (;;) {
@@ -112,18 +158,20 @@ namespace ts {
       if (dif == 0) {
         if (_head.compare_exchange_weak(pos, pos + 1, relaxed))
           break;
-      } else if (dif < 0) {
+      }
+      else if (dif < 0) {
         return std::nullopt;
-      } else {
+      }
+      else {
         pos = _head.load(relaxed);
       }
 
       _mm_pause();
     }
 
-    auto data = c->data;
+    auto data = std::move_if_noexcept(c->data);
     c->seq.store(pos + _mask + 1, release);
-    return data;
+    return std::move_if_noexcept(data);
   }
 
 
@@ -185,7 +233,7 @@ namespace ts {
     T x = _buffer[top & _mask].load(relaxed);
     if (!_top.compare_exchange_strong(top, top + 1, seq_cst, relaxed))
       /* race failed */
-        return std::nullopt;
+      return std::nullopt;
 
     return x;
   }
