@@ -106,13 +106,16 @@ namespace ts {
   vyukov<T>::vyukov(const size_t size)
     : _buffer(size),
       _mask(size - 1),
+      _available(0),
       _head(0),
       _tail(0) {
     assert(std::popcount(size) == 1);
 
+    _alive.test_and_set(relaxed);
     for (size_t i = 0; i < size; ++i) {
       _buffer[i].seq.store(i, relaxed);
     }
+
     std::atomic_thread_fence(release);
   }
 
@@ -142,6 +145,9 @@ namespace ts {
 
     c->data = x;
     c->seq.store(pos + 1, release);
+
+    _available.fetch_add(1, release);
+    _available.notify_one();
     return true;
   }
 
@@ -171,7 +177,37 @@ namespace ts {
 
     auto data = std::move_if_noexcept(c->data);
     c->seq.store(pos + _mask + 1, release);
+
+    _available.fetch_sub(1, acq_rel);
     return std::move_if_noexcept(data);
+  }
+
+  template<typename T>
+  std::optional<T> vyukov<T>::blocking_pop() {
+    for (;;) {
+      do {
+        _available.wait(0, acquire);
+      } while (_available.load(acquire) <= 0 && _alive.test());
+
+      if (auto v = pop())
+        return v;
+    }
+  }
+
+  template<typename T>
+  void vyukov<T>::kill() {
+    _alive.clear(relaxed);
+    /*
+     * It's "fake not-empty".
+     *
+     * Without sentinel value, `blocking_pop` can be in deadlock
+     * when `_available` is zero and `wait` is called after `notify_all`.
+     *
+     * So, non-zero state of `_available` is required
+     * to avoid another "state" variable to remove deadlock.
+     */
+    _available.store(std::numeric_limits<size_t>::max() / 2 /* sentinel */, release);
+    _available.notify_all();
   }
 
 

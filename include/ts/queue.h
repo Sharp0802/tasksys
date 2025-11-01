@@ -67,6 +67,9 @@ namespace ts {
     std::vector<slot> _buffer;
     size_t _mask;
 
+    std::atomic_size_t _available;
+    std::atomic_flag _alive = ATOMIC_FLAG_INIT;
+
     alignas(CACHELINE_SIZE) std::atomic_size_t _head;
     alignas(CACHELINE_SIZE) std::atomic_size_t _tail;
 
@@ -75,6 +78,9 @@ namespace ts {
 
     bool push(T x);
     std::optional<T> pop();
+    std::optional<T> blocking_pop();
+
+    void kill();
   };
 
   /**
