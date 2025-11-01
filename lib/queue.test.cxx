@@ -16,54 +16,30 @@ static constexpr size_t THREAD_COUNT = 8;
 constexpr size_t BASE_ITEM_COUNT = 1024 * 1024 * 32;
 
 // --- Test ts::queue ---
-// (Single-threaded manipulation, multithreaded viewing)
+// (Single-threaded manipulation)
 
 TEST(QueueTest, BasicPushPop) {
-  queue<int> q(8);
+  queue<int> q;
   EXPECT_TRUE(q.empty());
   EXPECT_EQ(q.size(), 0);
 
-  auto item1 = q.push(10);
-  EXPECT_TRUE(item1.has_value());
+  q.push(10);
   EXPECT_FALSE(q.empty());
   EXPECT_EQ(q.size(), 1);
-  EXPECT_EQ(item1->read(), 10);
 
-  auto item2 = q.push(20);
-  EXPECT_TRUE(item2.has_value());
+  q.push(20);
   EXPECT_EQ(q.size(), 2);
-  EXPECT_EQ(item2->read(), 20);
 
-  // Items can still be read
-  EXPECT_EQ(item1->read(), 10);
-
-  auto val1 = q.pop();
+  const auto val1 = q.pop();
   EXPECT_TRUE(val1.has_value());
   EXPECT_EQ(val1.value(), 10);
   EXPECT_EQ(q.size(), 1);
 
-  auto val2 = q.pop();
+  const auto val2 = q.pop();
   EXPECT_TRUE(val2.has_value());
   EXPECT_EQ(val2.value(), 20);
   EXPECT_EQ(q.size(), 0);
   EXPECT_TRUE(q.empty());
-}
-
-TEST(QueueTest, FullAndEmpty) {
-  queue<int> q(2);
-  EXPECT_TRUE(q.push(1).has_value());
-  EXPECT_TRUE(q.push(2).has_value());
-
-  // Queue is full
-  EXPECT_FALSE(q.push(3).has_value());
-  EXPECT_EQ(q.size(), 2);
-
-  EXPECT_EQ(q.pop().value(), 1);
-  EXPECT_EQ(q.pop().value(), 2);
-
-  // Queue is empty
-  EXPECT_FALSE(q.pop().has_value());
-  EXPECT_EQ(q.size(), 0);
 }
 
 
