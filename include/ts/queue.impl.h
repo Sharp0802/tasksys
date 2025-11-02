@@ -152,6 +152,17 @@ namespace ts {
   }
 
   template<typename T>
+  bool vyukov<T>::blocking_push(T x) {
+    bool alive;
+    do {
+      _available.wait(_mask + 1, acquire);
+      alive = _alive.test(acquire);
+    } while (alive && !push(std::move(x)));
+
+    return alive;
+  }
+
+  template<typename T>
   std::optional<T> vyukov<T>::pop() {
     slot *c;
 
@@ -179,6 +190,7 @@ namespace ts {
     c->seq.store(pos + _mask + 1, release);
 
     _available.fetch_sub(1, acq_rel);
+    _available.notify_one();
     return std::move_if_noexcept(data);
   }
 

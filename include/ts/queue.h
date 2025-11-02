@@ -77,6 +77,7 @@ namespace ts {
     explicit vyukov(size_t size);
 
     bool push(T x);
+    bool blocking_push(T x);
     std::optional<T> pop();
     std::optional<T> blocking_pop();
 
