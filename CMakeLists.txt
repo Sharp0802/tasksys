@@ -29,24 +29,21 @@ if (ASAN)
 endif ()
 
 
-set(TASKSYS_BUILD_TYPE SHARED CACHE STRING "Library type of tasksys (SHARED|STATIC)")
-
-file(GLOB_RECURSE SOURCES lib/*)
 file(GLOB_RECURSE HEADERS include/*)
 
-add_library(tasksys ${TASKSYS_BUILD_TYPE} ${SOURCES} ${HEADERS})
-target_include_directories(tasksys PUBLIC include)
-target_compile_features(tasksys PUBLIC cxx_std_23)
+add_library(tasksys INTERFACE ${HEADERS})
+target_include_directories(tasksys INTERFACE include)
+target_compile_features(tasksys INTERFACE cxx_std_23)
 
 
 if (PROJECT_IS_TOP_LEVEL)
     enable_testing()
 
-    add_executable(tasksys.test ${SOURCES} ${HEADERS})
-    target_include_directories(tasksys.test PUBLIC include)
+    file(GLOB_RECURSE TESTS test/*)
+
+    add_executable(tasksys.test ${TESTS})
     target_compile_features(tasksys.test PUBLIC cxx_std_23)
-    target_link_libraries(tasksys.test GTest::gtest_main)
-    target_compile_definitions(tasksys.test PRIVATE __TS_TEST__)
+    target_link_libraries(tasksys.test tasksys GTest::gtest_main)
 
     include(GoogleTest)
     gtest_discover_tests(tasksys.test)

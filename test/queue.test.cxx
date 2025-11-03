@@ -1,5 +1,3 @@
-#ifdef __TS_TEST__
-
 #include <atomic>
 #include <chrono>
 #include <numeric>
@@ -279,5 +277,3 @@ TEST(ChaseLevTest, OneOwnerManyStealers) {
     EXPECT_TRUE(check.contains(i)) << "missing found: " << i;
   }
 }
-
-#endif

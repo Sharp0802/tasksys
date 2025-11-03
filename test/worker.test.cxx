@@ -1,5 +1,3 @@
-#ifdef __TS_TEST__
-
 #include <atomic>
 #include <chrono>
 #include <numeric>
@@ -106,5 +104,3 @@ TEST(WorkerTest, GrainedIntegrity) {
     delete worker;
   }
 }
-
-#endif
