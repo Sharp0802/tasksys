@@ -22,8 +22,7 @@ namespace ts {
           std::make_unique<worker>(
             _workers,
             _queue,
-            config.local_queue_size,
-            config.local_batch_size
+            config.local_queue_size
           ));
       }
     }

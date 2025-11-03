@@ -19,16 +19,15 @@ TEST(WorkerTest, BasicDispatch) {
   vyukov<job*> global(4096);
 
   workers.reserve(1);
-  workers.emplace_back(std::make_unique<worker>(workers, global, 4096, 128));
+  workers.emplace_back(std::make_unique<worker>(workers, global, 4096));
 
   workers[0]->start();
 
   std::atomic_flag done = ATOMIC_FLAG_INIT;
 
   ASSERT_TRUE(
-    global.push(job::create([&done] (size_t) {
-      done.test_and_set();
-      }, 0, 1, nullptr)));
+    global.push(job::create([&done] (size_t) { done.test_and_set(); }, {}, nullptr))
+  );
 
   while (!done.test()) {
     _mm_pause();
@@ -50,7 +49,7 @@ TEST(WorkerTest, GrainedIntegrity) {
   // prepare workers
   workers.reserve(THREAD_COUNT);
   for (size_t i = 0; i < THREAD_COUNT; ++i) {
-    workers.emplace_back(std::make_unique<worker>(workers, global, 4096, 128));
+    workers.emplace_back(std::make_unique<worker>(workers, global, 4096));
   }
   for (size_t i = 0; i < THREAD_COUNT; ++i) {
     workers[i]->start();
@@ -72,7 +71,7 @@ TEST(WorkerTest, GrainedIntegrity) {
           if (current % 1024 == 0) {
             std::cout << current << '/' << BASE_ITEM_COUNT << std::endl;
           }
-        }, 0, 1, nullptr));
+        }, {}, nullptr));
   }
 
   // waiting for completion
@@ -116,7 +115,7 @@ TEST(WorkerTest, CoarsedIntegrity) {
   // prepare workers
   workers.reserve(THREAD_COUNT);
   for (size_t i = 0; i < THREAD_COUNT; ++i) {
-    workers.emplace_back(std::make_unique<worker>(workers, global, 4096, 128));
+    workers.emplace_back(std::make_unique<worker>(workers, global, 4096));
   }
   for (size_t i = 0; i < THREAD_COUNT; ++i) {
     workers[i]->start();
@@ -136,7 +135,7 @@ TEST(WorkerTest, CoarsedIntegrity) {
         if (current % 1024 == 0) {
           std::cout << current << '/' << BASE_ITEM_COUNT << std::endl;
         }
-      }, 0, BASE_ITEM_COUNT, nullptr)
+      }, { 0, BASE_ITEM_COUNT }, nullptr)
   );
 
   // waiting for completion

@@ -44,8 +44,6 @@ namespace ts {
     vyukov<job*> &_global;
     chaselev<job*> _local;
 
-    size_t _batch_size;
-
     std::optional<std::jthread> _thread;
 
     static worker *&instance() {
@@ -55,7 +53,7 @@ namespace ts {
 
     // note: job must be dynamically allocated
     job *chunk(job *job) {
-      while (job->size() > _batch_size) {
+      while (job->size() > job->batch()) {
         const auto right = job->split(job->size() / 2);
         push(right);
       }
@@ -131,14 +129,11 @@ namespace ts {
     worker(
       const std::vector<std::unique_ptr<worker>> &workers,
       vyukov<job*> &global,
-      const size_t size,
-      const size_t batch_size)
+      const size_t size)
       : _workers(workers),
         _id(-1),
         _global(global),
-        _local(size),
-        _batch_size(batch_size) {
-      assert(_batch_size > 0);
+        _local(size) {
     }
 
     [[nodiscard]]
