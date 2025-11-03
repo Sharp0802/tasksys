@@ -254,7 +254,7 @@ namespace ts {
       return std::nullopt;
     }
 
-    std::optional x(std::move_if_noexcept(_buffer[bottom & _mask].load(relaxed)));
+    std::optional x(_buffer[bottom & _mask].load(relaxed));
 
     if (top == bottom) {
       /* race on last item */
@@ -278,7 +278,7 @@ namespace ts {
     }
 
     /* non-empty */
-    T x(std::move_if_noexcept(_buffer[top & _mask].load(relaxed)));
+    T x(_buffer[top & _mask].load(relaxed));
     if (!_top.compare_exchange_strong(top, top + 1, seq_cst, relaxed))
       /* race failed */
       return std::nullopt;
@@ -296,7 +296,7 @@ namespace ts {
       return false;
     }
 
-    _buffer[bottom & _mask].store(std::move_if_noexcept(x), relaxed);
+    _buffer[bottom & _mask].store(x, relaxed);
     std::atomic_thread_fence(release);
     _bottom.store(bottom + 1, relaxed);
 

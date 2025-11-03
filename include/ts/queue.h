@@ -75,7 +75,7 @@ namespace ts {
   constexpr size_t CACHELINE_SIZE = std::hardware_destructive_interference_size;
 
   template<typename T>
-  concept atom = std::is_nothrow_move_constructible_v<T> && std::atomic<T>::is_always_lock_free;
+  concept atom = std::is_trivially_copy_constructible_v<T> && std::atomic<T>::is_always_lock_free;
 
   /**
    * Dmitry Vyukov's mpmc queue implementation
