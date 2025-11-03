@@ -112,8 +112,12 @@ namespace ts {
         }
 
         miss = 0;
-        chunk(job)->call();
-        _storage.yield(job);
+
+        std::optional<ts::job*> opt;
+        do {
+          opt = chunk(job)->call();
+          _storage.yield(job);
+        } while (opt);
       }
     }
 
