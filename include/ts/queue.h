@@ -44,15 +44,38 @@ namespace ts {
     ~pool();
 
     template<typename... Args>
-    T *rent(Args&&... args);
+    T *rent(Args &&... args);
 
     void yield(T *p);
+  };
+
+  /**
+   * Object pool implementation
+   * for multi-thread
+   * based on thread-local object pool
+   */
+  template<typename T>
+  class mt_pool {
+    static pool<T> *inner() {
+      thread_local pool<T> inner;
+      return &inner;
+    }
+
+  public:
+    template<typename... Args>
+    static T *rent(Args &&... args) {
+      return inner()->rent(std::forward<Args>(args)...);
+    }
+
+    static void yield(T *p) {
+      inner()->yield(p);
+    }
   };
 
   constexpr size_t CACHELINE_SIZE = std::hardware_destructive_interference_size;
 
   template<typename T>
-  concept atom = std::is_trivially_copyable_v<T> && std::atomic<T>::is_always_lock_free;
+  concept atom = std::is_nothrow_move_constructible_v<T> && std::atomic<T>::is_always_lock_free;
 
   /**
    * Dmitry Vyukov's mpmc queue implementation
