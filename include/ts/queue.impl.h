@@ -210,12 +210,12 @@ namespace ts {
         alive = _alive.test(acquire);
       } while (_available.load(acquire) <= 0 && alive);
 
+      if (auto v = pop())
+        return v;
+
       if (!alive) {
         return std::nullopt;
       }
-
-      if (auto v = pop())
-        return v;
     }
   }
 
