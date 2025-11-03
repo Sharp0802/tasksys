@@ -38,12 +38,10 @@ namespace ts {
   class worker {
     std::atomic_flag _active = ATOMIC_FLAG_INIT;
 
-    worker** _workers;
-    size_t _workers_size;
+    const std::vector<std::unique_ptr<worker>> &_workers;
     size_t _id;
 
     vyukov<job*> &_global;
-
     chaselev<job*> _local;
 
     size_t _batch_size;
@@ -51,7 +49,7 @@ namespace ts {
     std::optional<std::jthread> _thread;
 
     static worker *&instance() {
-      thread_local worker *instance;
+      thread_local worker *instance = nullptr;
       return instance;
     }
 
@@ -59,7 +57,7 @@ namespace ts {
     job *chunk(job *job) {
       while (job->size() > _batch_size) {
         const auto right = job->split(job->size() / 2);
-        _local.push(right);
+        push(right);
       }
 
       return job;
@@ -70,10 +68,9 @@ namespace ts {
         return opt.value();
       }
 
-      if (_workers_size > 1) {
-
-        auto ofs = rnd32() % (_workers_size - 1);
-        ofs = (_id + ofs) % _workers_size;
+      if (const auto size = _workers.size(); size > 1) {
+        auto ofs = rnd32() % (size - 1) + 1;
+        ofs = (_id + ofs) % size;
 
         if (const auto opt = _workers[ofs]->_local.steal()) {
           return opt.value();
@@ -108,7 +105,8 @@ namespace ts {
 
           if (auto opt = _global.blocking_pop()) {
             job = opt.value();
-          } else {
+          }
+          else {
             continue;
           }
         }
@@ -131,13 +129,11 @@ namespace ts {
 
   public:
     worker(
-      worker** workers,
-      size_t workers_size,
+      const std::vector<std::unique_ptr<worker>> &workers,
       vyukov<job*> &global,
       const size_t size,
       const size_t batch_size)
       : _workers(workers),
-        _workers_size(workers_size),
         _id(-1),
         _global(global),
         _local(size),
@@ -161,7 +157,14 @@ namespace ts {
         return;
       }
 
+      // `blocking_push` cannot fail;
+      // only way to fail is call `push` after `stop`.
+#if NDEBUG
       _global.blocking_push(job);
+#else
+      const auto r = _global.blocking_push(job);
+      assert(r);
+#endif
     }
 
     bool start() {
@@ -170,8 +173,8 @@ namespace ts {
       }
 
       _id = -1;
-      for (auto i = 0; i < _workers_size; i++) {
-        if (_workers[i] == this) {
+      for (auto i = 0; i < _workers.size(); i++) {
+        if (_workers[i].get() == this) {
           _id = i;
         }
       }
@@ -179,9 +182,7 @@ namespace ts {
         throw std::invalid_argument("Worker must be initialized with worker list that contains self");
       }
 
-      _thread.emplace([this] {
-        loop();
-      });
+      _thread.emplace([this] { loop(); });
 
       return true;
     }
@@ -196,6 +197,8 @@ namespace ts {
       if (_thread && _thread->joinable()) {
         _thread->join();
       }
+
+      instance() = nullptr;
     }
 
     ~worker() {
