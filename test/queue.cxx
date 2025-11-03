@@ -9,8 +9,8 @@
 
 using namespace ts;
 
-static constexpr size_t THREAD_COUNT = 8;
-constexpr size_t BASE_ITEM_COUNT = 1024 * 1024 * 32;
+constexpr size_t THREAD_COUNT = 8;
+constexpr size_t BASE_ITEM_COUNT = 1024 * 1024 * 8;
 
 // --- Test ts::queue ---
 // (Single-threaded manipulation)

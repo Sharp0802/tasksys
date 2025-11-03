@@ -3,6 +3,8 @@
 #include <functional>
 #include <utility>
 
+#include "queue.h"
+
 namespace ts {
   class job {
     std::function<void(size_t)> _callback;
