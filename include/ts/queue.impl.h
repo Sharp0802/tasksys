@@ -53,7 +53,14 @@ namespace ts {
       return std::nullopt;
     }
 
-    return std::move_if_noexcept(_buffer[_tail++ & _mask]);
+    const auto i = _tail++ & _mask;
+#if NDEBUG
+    return std::move_if_noexcept(_buffer[i]);
+#else
+    T x{};
+    std::swap(x, _buffer[i]);
+    return std::move_if_noexcept(x);
+#endif
   }
 
   template<typename T>
