@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [ "master" ]
 
-env:
-  BUILD_TYPE: Release
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,18 +13,14 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install requirements
-      run: |
-        sudo apt install libtbb-dev
-        sudo bash -c 'wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- 20'
-
     - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCMAKE_CXX_COMPILER="/usr/bin/clang++-20"
+      working-directory: ${{github.workspace}}
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Debug
 
     - name: Build
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      working-directory: ${{github.workspace}}
+      run: cmake --build build --config Debug -j
 
     - name: Test
-      working-directory: ${{github.workspace}}/build/test
-      run: ./tasksys-test
-
+      working-directory: ${{github.workspace}}/build
+      run: ./tasksys.test
