@@ -10,7 +10,6 @@
 #include "ts/queue.h"
 
 using namespace ts;
-using namespace std::chrono_literals;
 
 static constexpr size_t THREAD_COUNT = 8;
 constexpr size_t BASE_ITEM_COUNT = 1024 * 1024 * 32;
