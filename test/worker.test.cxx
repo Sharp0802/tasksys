@@ -16,30 +16,31 @@ constexpr size_t BASE_ITEM_COUNT = 1024 * 16;
 // --- Test ts::worker ---
 
 TEST(WorkerTest, BasicDispatch) {
-  std::array<worker*, 1> workers{};
+  std::vector<std::unique_ptr<worker>> workers{};
   vyukov<job*> global(4096);
 
-  worker w(workers.data(), 1, global, 4096, 128);
-  workers[0] = &w;
+  workers.reserve(1);
+  workers.emplace_back(std::make_unique<worker>(workers, global, 4096, 128));
 
-  w.start();
+  workers[0]->start();
 
   std::atomic_flag done = ATOMIC_FLAG_INIT;
 
-  ASSERT_TRUE(global.push(job::create([&done] (size_t) {
-    done.test_and_set();
-  }, 0, 1, nullptr)));
+  ASSERT_TRUE(
+    global.push(job::create([&done] (size_t) {
+      done.test_and_set();
+      }, 0, 1, nullptr)));
 
   while (!done.test()) {
     _mm_pause();
   }
 
   global.kill();
-  w.stop();
+  workers[0]->stop();
 }
 
 TEST(WorkerTest, GrainedIntegrity) {
-  std::array<worker*, THREAD_COUNT> workers{};
+  std::vector<std::unique_ptr<worker>> workers{};
   std::array<std::vector<size_t>, THREAD_COUNT> buffer{};
 
   std::atomic_size_t counter = 0;
@@ -48,8 +49,9 @@ TEST(WorkerTest, GrainedIntegrity) {
   vyukov<job*> global(4096);
 
   // prepare workers
+  workers.reserve(THREAD_COUNT);
   for (size_t i = 0; i < THREAD_COUNT; ++i) {
-    workers[i] = new worker(workers.data(), THREAD_COUNT, global, 4096, 128);
+    workers.emplace_back(std::make_unique<worker>(workers, global, 4096, 128));
   }
   for (size_t i = 0; i < THREAD_COUNT; ++i) {
     workers[i]->start();
@@ -58,18 +60,20 @@ TEST(WorkerTest, GrainedIntegrity) {
   // push works
   for (size_t i = 0; i < BASE_ITEM_COUNT; ++i) {
     const auto ci = i;
-    global.blocking_push(job::create([&buffer, &counter, &alarm, ci] (size_t) {
-      buffer[worker::current()->id()].push_back(ci);
+    global.blocking_push(
+      job::create(
+        [&buffer, &counter, &alarm, ci](size_t) {
+          buffer[worker::current()->id()].push_back(ci);
 
-      const auto current = ++counter;
-      if (current == BASE_ITEM_COUNT) {
-        alarm.test_and_set(release);
-        alarm.notify_all();
-      }
-      if (current % 1024 == 0) {
-        std::cout << current << '/' << BASE_ITEM_COUNT << std::endl;
-      }
-    }, 0, 1, nullptr));
+          const auto current = ++counter;
+          if (current == BASE_ITEM_COUNT) {
+            alarm.test_and_set(release);
+            alarm.notify_all();
+          }
+          if (current % 1024 == 0) {
+            std::cout << current << '/' << BASE_ITEM_COUNT << std::endl;
+          }
+        }, 0, 1, nullptr));
   }
 
   // waiting for completion
@@ -98,9 +102,5 @@ TEST(WorkerTest, GrainedIntegrity) {
   // summarize
   for (size_t i = 0; i < THREAD_COUNT; ++i) {
     std::cout << "thread[" << i << "] = " << buffer[i].size() << std::endl;
-  }
-
-  for (const auto worker: workers) {
-    delete worker;
   }
 }
