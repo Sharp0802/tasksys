@@ -71,7 +71,7 @@ namespace ts {
   pool<T>::~pool() {
     while (true) {
       if (auto p = _queue.pop()) {
-        delete p.value();
+        ::operator delete(p.value());
         continue;
       }
 
