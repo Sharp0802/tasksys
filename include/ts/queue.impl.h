@@ -197,9 +197,15 @@ namespace ts {
   template<typename T>
   std::optional<T> vyukov<T>::blocking_pop() {
     for (;;) {
+      bool alive;
       do {
         _available.wait(0, acquire);
-      } while (_available.load(acquire) <= 0 && _alive.test());
+        alive = _alive.test(acquire);
+      } while (_available.load(acquire) <= 0 && alive);
+
+      if (!alive) {
+        return std::nullopt;
+      }
 
       if (auto v = pop())
         return v;
