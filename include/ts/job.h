@@ -7,87 +7,58 @@
 namespace ts {
   class job {
     std::function<void(size_t)> _callback;
-
-    bool _valid;
     size_t _begin;
     size_t _end;
 
     size_t _ref;
     job *_parent;
 
-    void from(job &&origin) noexcept {
-      _callback = std::move(origin._callback);
-      _valid = origin._valid;
-      _begin = origin._begin;
-      _end = origin._end;
-      _ref = origin._ref;
-      _parent = origin._parent;
-
-      origin._valid = false;
-#if !NDEBUG
-      origin._begin = 0;
-      origin._end = 0;
-      origin._ref = 0;
-      origin._parent = nullptr;
-#endif
-    }
-
-  public:
-    job()
-      : _valid(false),
-        _begin(0),
-        _end(0),
-        _ref(0),
-        _parent(nullptr) {
-    }
+    friend class pool<job>;
 
     job(std::function<void(size_t)> callback, const size_t begin, const size_t end, job *parent)
       : _callback(std::move(callback)),
-        _valid(true),
         _begin(begin),
         _end(end),
         _ref(0),
         _parent(parent) {
     }
 
-    job(job &&origin) noexcept {
-      from(std::forward<job>(origin));
+  public:
+    [[nodiscard]]
+    static job *create(
+      const std::function<void(size_t)> &callback,
+      const size_t begin,
+      const size_t end,
+      job *parent
+    ) {
+      __atomic_fetch_add(&parent->_ref, 1, __ATOMIC_ACQ_REL);
+      return mt_pool<job>::rent(std::move_if_noexcept(callback), begin, end, parent);
     }
 
     job(const job &) = delete;
     job &operator=(const job &) = delete;
 
-    job &operator=(job &&origin) noexcept {
-      if (this != &origin) {
-        from(std::forward<job>(origin));
-      }
-
-      return *this;
+    void yield() {
+      mt_pool<job>::yield(this);
     }
 
     [[nodiscard]]
     size_t size() const {
-      assert(_valid);
       return _end - _begin;
     }
 
     [[nodiscard]]
     bool empty() const {
-      assert(_valid);
       return _begin == _end;
     }
 
     [[nodiscard]]
-    std::pair<job, job> split(const size_t at) const {
-      assert(_valid);
+    job *split(const size_t at) {
+      // left
+      _end = _begin + at;
 
-      if (_parent) {
-        __atomic_fetch_add(&_parent->_ref, 1, __ATOMIC_RELEASE);
-      }
-
-      job left(_callback, _begin, _begin + at, _parent);
-      job right(_callback, _begin + at, _end, _parent);
-      return std::make_pair(std::move(left), std::move(right));
+      // right
+      return create(_callback, _begin + at, _end, _parent);
     }
 
     [[nodiscard]]

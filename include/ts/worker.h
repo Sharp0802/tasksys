@@ -43,7 +43,6 @@ namespace ts {
 
     vyukov<job*> &_global;
 
-    pool<job> _storage;
     chaselev<job*> _local;
 
     size_t _batch_size;
@@ -53,13 +52,8 @@ namespace ts {
     // note: job must be dynamically allocated
     job *chunk(job *job) {
       while (job->size() > _batch_size) {
-        auto [left, right] = job->split(job->size() / 2);
-
-        // reuse space
-        *job = std::move(right);
-        _local.push(job);
-
-        job = _storage.rent(std::move(left));
+        const auto right = job->split(job->size() / 2);
+        _local.push(right);
       }
 
       return job;
@@ -113,11 +107,17 @@ namespace ts {
 
         miss = 0;
 
-        std::optional<ts::job*> opt;
-        do {
-          opt = chunk(job)->call();
-          _storage.yield(job);
-        } while (opt);
+        std::optional<ts::job*> next;
+        for (;;) {
+          next = chunk(job)->call();
+          job->yield();
+
+          if (!next) {
+            break;
+          }
+
+          job = next.value();
+        }
       }
     }
 
