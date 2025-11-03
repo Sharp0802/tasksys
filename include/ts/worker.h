@@ -38,7 +38,8 @@ namespace ts {
   class worker {
     std::atomic_flag _active = ATOMIC_FLAG_INIT;
 
-    const std::vector<worker*> &_workers;
+    worker** _workers;
+    size_t _workers_size;
     size_t _id;
 
     vyukov<job*> &_global;
@@ -48,6 +49,11 @@ namespace ts {
     size_t _batch_size;
 
     std::optional<std::jthread> _thread;
+
+    static worker *&instance() {
+      thread_local worker *instance;
+      return instance;
+    }
 
     // note: job must be dynamically allocated
     job *chunk(job *job) {
@@ -64,10 +70,10 @@ namespace ts {
         return opt.value();
       }
 
-      if (_workers.size() > 1) {
+      if (_workers_size > 1) {
 
-        auto ofs = rnd32() % (_workers.size() - 1);
-        ofs = (_id + ofs) % _workers.size();
+        auto ofs = rnd32() % (_workers_size - 1);
+        ofs = (_id + ofs) % _workers_size;
 
         if (const auto opt = _workers[ofs]->_local.steal()) {
           return opt.value();
@@ -82,6 +88,8 @@ namespace ts {
     }
 
     void loop() {
+      instance() = this;
+
       size_t miss = 0;
       while (_active.test()) {
         job *job = take();
@@ -123,17 +131,26 @@ namespace ts {
 
   public:
     worker(
-      const std::vector<worker*> &workers,
+      worker** workers,
+      size_t workers_size,
       vyukov<job*> &global,
       const size_t size,
       const size_t batch_size)
       : _workers(workers),
+        _workers_size(workers_size),
         _id(-1),
         _global(global),
         _local(size),
         _batch_size(batch_size) {
       assert(_batch_size > 0);
     }
+
+    [[nodiscard]]
+    static worker *current() {
+      return instance();
+    }
+
+    [[nodiscard]] size_t id() const { return _id; }
 
     void push(job *job) {
       if (_local.push(job)) {
@@ -153,7 +170,7 @@ namespace ts {
       }
 
       _id = -1;
-      for (auto i = 0; i < _workers.size(); i++) {
+      for (auto i = 0; i < _workers_size; i++) {
         if (_workers[i] == this) {
           _id = i;
         }
@@ -169,13 +186,14 @@ namespace ts {
       return true;
     }
 
+    // note: global queue must be killed before stopping worker
     void stop() {
       if (!_active.test()) {
         return;
       }
 
       _active.clear();
-      if (_thread->joinable()) {
+      if (_thread && _thread->joinable()) {
         _thread->join();
       }
     }
