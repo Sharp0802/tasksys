@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cassert>
 #include <functional>
 #include <utility>
 
@@ -31,7 +30,9 @@ namespace ts {
       const size_t end,
       job *parent
     ) {
-      __atomic_fetch_add(&parent->_ref, 1, __ATOMIC_ACQ_REL);
+      if (parent) {
+        __atomic_fetch_add(&parent->_ref, 1, __ATOMIC_ACQ_REL);
+      }
       return mt_pool<job>::rent(std::move_if_noexcept(callback), begin, end, parent);
     }
 
@@ -63,8 +64,6 @@ namespace ts {
 
     [[nodiscard]]
     std::optional<job*> call() const {
-      assert(_valid);
-
       for (size_t i = _begin; i < _end; ++i) {
         _callback(i);
       }
