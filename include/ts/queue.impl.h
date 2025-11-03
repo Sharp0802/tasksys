@@ -235,6 +235,13 @@ namespace ts {
     _available.notify_all();
   }
 
+  template<typename T>
+  void vyukov<T>::unsafe_reset() {
+    _available.store(0, release);
+    _head.store(0, release);
+    _tail.store(0, release);
+  }
+
 
   template<atom T>
   chaselev<T>::chaselev(const size_t size)

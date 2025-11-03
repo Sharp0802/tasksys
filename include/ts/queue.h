@@ -105,6 +105,9 @@ namespace ts {
     std::optional<T> blocking_pop();
 
     void kill();
+
+    // note: ignores inner items; may leak
+    void unsafe_reset();
   };
 
   /**
