@@ -144,7 +144,7 @@ namespace ts {
     [[nodiscard]] size_t id() const { return _id; }
 
     void push(job *job) {
-      if (_local.push(job)) {
+      if (_local.try_push(job)) {
         return;
       }
 
@@ -152,14 +152,7 @@ namespace ts {
         return;
       }
 
-      // `blocking_push` cannot fail;
-      // only way to fail is call `push` after `stop`.
-#if NDEBUG
-      _global.blocking_push(job);
-#else
-      const auto r = _global.blocking_push(job);
-      assert(r);
-#endif
+      _local.push(job);
     }
 
     bool start() {

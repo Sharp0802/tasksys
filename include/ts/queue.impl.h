@@ -5,7 +5,9 @@
 #endif
 
 #include <cassert>
+#if defined(__i386__) || defined(__x86_64__)
 #include <emmintrin.h>
+#endif
 
 namespace ts {
   using std::memory_order::relaxed;
@@ -13,6 +15,16 @@ namespace ts {
   using std::memory_order::acq_rel;
   using std::memory_order::release;
   using std::memory_order::seq_cst;
+
+  inline void may_relax() noexcept {
+#if defined(_MSC_VER) || __clang__
+    _mm_pause();
+#elif defined(__i386__) || defined(__x86_64__)
+    __builtin_ia32_pause();
+#elif defined(__aarch64__) || defined(__arm__)
+    __asm__ __volatile__("yield" ::: "memory");
+#endif
+  }
 
   template<typename T>
   void queue<T>::resize(size_t size) {
@@ -87,7 +99,8 @@ namespace ts {
       try {
         new(p) T(std::forward<Args>(args)...);
         return p;
-      } catch (...) {
+      }
+      catch (...) {
         delete p;
         throw;
       }
@@ -103,7 +116,8 @@ namespace ts {
     p->~T();
     try {
       _queue.push(p);
-    } catch (...) {
+    }
+    catch (...) {
       delete p;
       throw;
     }
@@ -147,7 +161,7 @@ namespace ts {
         pos = _tail.load(relaxed);
       }
 
-      _mm_pause();
+      may_relax();
     }
 
     c->data = x;
@@ -190,7 +204,7 @@ namespace ts {
         pos = _head.load(relaxed);
       }
 
-      _mm_pause();
+      may_relax();
     }
 
     auto data = std::move_if_noexcept(c->data);
@@ -243,10 +257,61 @@ namespace ts {
   }
 
 
+  template<typename T>
+  buffer_desc<T>::buffer_desc(const size_t size): _data(new std::atomic<T>[size]), _size(size), _mask(size - 1) {
+    assert(std::popcount(size) == 1);
+  }
+
+  template<typename T>
+  buffer_desc<T>::~buffer_desc() {
+    delete[] _data;
+  }
+
+  template<typename T>
+  size_t buffer_desc<T>::size() const {
+    return _size;
+  }
+
+  template<typename T>
+  T buffer_desc<T>::load(const size_t i, std::memory_order order) {
+    return _data[i & _mask].load(order);
+  }
+
+  template<typename T>
+  void buffer_desc<T>::store(const size_t i, T x, std::memory_order order) {
+    _data[i & _mask].store(x, order);
+  }
+
+
+  template<typename T>
+  buffer<T>::buffer(const size_t size) : _inner(new buffer_desc<T>(size)), _past(nullptr) {
+    assert(std::popcount(size) == 1);
+  }
+
+  template<typename T>
+  buffer<T>::~buffer() {
+    delete _inner.load(acquire);
+    delete _past;
+  }
+
+  template<typename T>
+  void buffer<T>::resize(const size_t begin, const size_t end) {
+    const auto inner = _inner.load(relaxed);
+    const auto new_size = inner->size() * 2;
+
+    auto new_inner = new buffer_desc<T>(new_size);
+    for (size_t i = begin; i < end; i++) {
+      new_inner->store(i % new_size, inner->load(i % inner->size(), relaxed), relaxed);
+    }
+
+    delete _past;
+    _past = _inner.exchange(new_inner, release);
+  }
+
+
   template<atom T>
   chaselev<T>::chaselev(const size_t size)
     : _buffer(size),
-      _mask(size - 1),
       _bottom(0),
       _top(0) {
     assert(std::popcount(size) == 1);
@@ -263,6 +328,7 @@ namespace ts {
   template<atom T>
   std::optional<T> chaselev<T>::take() {
     const auto bottom = _bottom.load(acquire) - 1;
+    const auto array = _buffer.get(relaxed);
     _bottom.store(bottom, relaxed);
 
     std::atomic_thread_fence(seq_cst);
@@ -274,7 +340,7 @@ namespace ts {
       return std::nullopt;
     }
 
-    std::optional x(_buffer[bottom & _mask].load(relaxed));
+    std::optional x(array->load(bottom, relaxed));
 
     if (top == bottom) {
       /* race on last item */
@@ -298,7 +364,8 @@ namespace ts {
     }
 
     /* non-empty */
-    T x(_buffer[top & _mask].load(relaxed));
+    auto array = _buffer.get(relaxed);
+    T x(array->load(top, relaxed));
     if (!_top.compare_exchange_strong(top, top + 1, seq_cst, relaxed))
       /* race failed */
       return std::nullopt;
@@ -307,16 +374,32 @@ namespace ts {
   }
 
   template<atom T>
-  bool chaselev<T>::push(const T x) {
-    const size_t bottom = _bottom.load(relaxed);
-    const size_t top = _top.load(acquire);
+  void chaselev<T>::push(const T x) {
+    const auto bottom = _bottom.load(relaxed);
+    const auto top = _top.load(acquire);
 
-    if (bottom - top > _mask) {
-      /* full */
+    auto array = _buffer.get(relaxed);
+    if (bottom - top >= array->size()) {
+      _buffer.resize(top, bottom);
+      array = _buffer.get(relaxed);
+    }
+
+    array->store(bottom, x, relaxed);
+    std::atomic_thread_fence(release);
+    _bottom.store(bottom + 1, relaxed);
+  }
+
+  template<atom T>
+  bool chaselev<T>::try_push(T x) {
+    const auto bottom = _bottom.load(relaxed);
+    const auto top = _top.load(acquire);
+
+    auto array = _buffer.get(relaxed);
+    if (bottom - top >= array->size()) {
       return false;
     }
 
-    _buffer[bottom & _mask].store(x, relaxed);
+    array->store(bottom, x, relaxed);
     std::atomic_thread_fence(release);
     _bottom.store(bottom + 1, relaxed);
 

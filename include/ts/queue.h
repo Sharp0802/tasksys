@@ -110,13 +110,53 @@ namespace ts {
     void unsafe_reset();
   };
 
+  template<typename T>
+  class buffer_desc {
+    std::atomic<T> *_data;
+    size_t _size;
+    size_t _mask;
+
+  public:
+    explicit buffer_desc(size_t size);
+
+    buffer_desc(const buffer_desc &) = delete;
+    buffer_desc &operator=(const buffer_desc &) = delete;
+
+    ~buffer_desc();
+
+    [[nodiscard]]
+    size_t size() const;
+
+    [[nodiscard]]
+    T load(size_t i, std::memory_order order);
+
+    void store(size_t i, T x, std::memory_order order);
+  };
+
+  template<typename T>
+  class buffer {
+    std::atomic<buffer_desc<T>*> _inner;
+    buffer_desc<T> *_past;
+
+  public:
+    explicit buffer(size_t size);
+
+    ~buffer();
+
+    buffer(const buffer &) = delete;
+    buffer &operator=(const buffer &) = delete;
+
+    [[nodiscard]] buffer_desc<T> *get(std::memory_order order) const { return _inner.load(order); }
+
+    void resize(size_t begin, size_t end);
+  };
+
   /**
-   * Bounded chase-lev deque implementation.
+   * Unbounded chase-lev deque implementation.
    */
   template<atom T>
   class chaselev {
-    std::vector<std::atomic<T>> _buffer;
-    size_t _mask;
+    buffer<T> _buffer;
 
     alignas(CACHELINE_SIZE) std::atomic_size_t _bottom;
     alignas(CACHELINE_SIZE) std::atomic_size_t _top;
@@ -131,7 +171,8 @@ namespace ts {
 
     std::optional<T> take();
     std::optional<T> steal();
-    bool push(T x);
+    void push(T x);
+    bool try_push(T x);
   };
 }
 
