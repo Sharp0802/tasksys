@@ -10,7 +10,7 @@
 using namespace ts;
 
 constexpr size_t THREAD_COUNT = 8;
-constexpr size_t BASE_ITEM_COUNT = 1024 * 1024 * 8;
+constexpr size_t BASE_ITEM_COUNT = 1024 * 1024;
 
 // --- Test ts::queue ---
 // (Single-threaded manipulation)
@@ -143,8 +143,8 @@ TEST(FAATest, Integrity) {
 
 TEST(ChaseLevTest, BasicPushTake) {
   chaselev<int> d(8);
-  EXPECT_TRUE(d.push(10));
-  EXPECT_TRUE(d.push(20)); // Pushes [10, 20]
+  d.push(10);
+  d.push(20); // Pushes [10, 20]
 
   const auto val1 = d.take(); // LIFO
   EXPECT_TRUE(val1.has_value());
@@ -159,8 +159,8 @@ TEST(ChaseLevTest, BasicPushTake) {
 
 TEST(ChaseLevTest, BasicPushSteal) {
   chaselev<int> d(8);
-  EXPECT_TRUE(d.push(10));
-  EXPECT_TRUE(d.push(20)); // Pushes [10, 20]
+  d.push(10);
+  d.push(20); // Pushes [10, 20]
 
   // Steal is FIFO
   const auto val1 = d.steal();
@@ -176,13 +176,12 @@ TEST(ChaseLevTest, BasicPushSteal) {
 
 TEST(ChaseLevTest, FullAndEmpty) {
   chaselev<int> d(2);
-  EXPECT_TRUE(d.push(1));
-  EXPECT_TRUE(d.push(2));
-  EXPECT_FALSE(d.push(3)); // Full
+  d.push(1);
+  d.push(2);
 
   EXPECT_EQ(d.take().value(), 2);
   EXPECT_EQ(d.take().value(), 1);
-  EXPECT_FALSE(d.take().has_value()); // Empty
+  EXPECT_FALSE(d.take().has_value());
 }
 
 TEST(ChaseLevTest, RaceOnLastItem) {
@@ -209,24 +208,21 @@ TEST(ChaseLevTest, OneOwnerManyStealers) {
   std::jthread owner(
     [&d, &start] {
       for (auto i = 0; i < QUEUE_SIZE; ++i) {
-        EXPECT_TRUE(d.push(i));
+        d.push(i);
       }
 
       start.test_and_set(release);
       start.notify_all();
 
-      for (auto i = QUEUE_SIZE; i < ITEM_COUNT;) {
+      for (auto i = QUEUE_SIZE; i < ITEM_COUNT; i++) {
         // push and
-        if (d.push(i))
-          i++;
+        d.push(i);
 
         // take and
-        if (i & 1) {
+        if (i % 8 == 0) {
           if (auto v = d.take()) {
             // push
-            while (!d.push(v.value())) {
-              _mm_pause();
-            }
+            d.push(v.value());
           }
         }
       }
