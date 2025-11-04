@@ -3,19 +3,28 @@
 #include "worker.h"
 
 namespace ts {
+  constexpr size_t align(size_t n) {
+    size_t r = 1;
+    while (n > r) {
+      r *= 2;
+    }
+    return r;
+  }
+
   struct config {
     size_t worker_count = std::thread::hardware_concurrency();
-    size_t local_queue_size = 8192;
+    size_t local_queue_size = 4096;
     size_t local_batch_size = 256;
-    size_t global_queue_size = 8192;
+    size_t global_queue_size = align(4096 * worker_count);
   };
 
   class scheduler {
+    config _config;
     std::vector<std::unique_ptr<worker>> _workers;
     vyukov<job*> _queue;
 
   public:
-    explicit scheduler(const config &config) : _queue(config.global_queue_size) {
+    explicit scheduler(const config &config) : _config(config), _queue(config.global_queue_size) {
       _workers.reserve(config.worker_count);
       for (size_t i = 0; i < config.worker_count; ++i) {
         _workers.emplace_back(
@@ -26,6 +35,8 @@ namespace ts {
           ));
       }
     }
+
+    [[nodiscard]] const config &config() const noexcept { return _config; }
 
     void push(job *job) {
       if (const auto current = worker::current()) {
